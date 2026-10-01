@@ -36,7 +36,6 @@ KNOWN LIMITATIONS
     - Range assumes the target's real height (PERSON_HEIGHT_M) and a full-body box.
       Sitting, crouching, or legs cut off by the frame make range read too far.
     - Range is unfiltered; smoothing is roadmap step 2.
-    - A zero-height box would cause a divide-by-zero in the range formula.
 """
 
 import math
@@ -129,12 +128,13 @@ while True:
                 # EST-2: range from box height (pinhole model):
                 #   distance = fx * real height / height in pixels
                 h_px = y2 - y1                              # box height in pixels
-                distance = fx * PERSON_HEIGHT_M / h_px      # meters
-
+                if h_px > 0:
+                    distance = fx * PERSON_HEIGHT_M / h_px      # meters
+                    cv2.putText(frame, f"Range: {distance:.1f} m", (30, 120),
+                                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 cv2.putText(frame, f"Bearing: {bearing:.1f} deg", (30, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                cv2.putText(frame, f"Range: {distance:.1f} m", (30, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
                 found = True
 
             color = (0, 255, 0) if tid == target_id else (128, 128, 128)

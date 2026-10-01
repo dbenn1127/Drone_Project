@@ -5,3 +5,5 @@ venv/
 *.mp4
 *.tlog
 *.bin
+sim/*.csv
+sim/*.gif

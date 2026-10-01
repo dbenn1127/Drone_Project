@@ -11,7 +11,8 @@ last_boxes=[]
 
 width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)   # frame width in pixels, e.g. 1280
 hfov_deg = 65                                # iPhone camera's horizontal field of view (estimate)
-LOST_TIMEOUT_S = 2.0 #SAAF-3 [TBR]
+LOST_TIMEOUT_S = 2.0    #SAF-3 [TBR]
+PERSON_HEIGHT_M = 1.88   # my height; EST-2 depends on this
 
 cx = width / 2
 fx = (width / 2) / math.tan(math.radians(hfov_deg / 2))
@@ -52,7 +53,11 @@ while True:
             if tid == target_id:
                 u= (x1+x2)/2
                 bearing = math.degrees(math.atan((u-cx)/fx))
+                h_px = y2 - y1                              # box height in pixels
+                distance = fx * PERSON_HEIGHT_M / h_px      # meters
                 cv2.putText(frame, f"Bearing: {bearing:.1f} deg", (30, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame, f"Range: {distance:.1f} m", (30, 120),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 found = True
             color = (0, 255, 0) if tid == target_id else (128, 128, 128)

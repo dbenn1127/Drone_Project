@@ -1,0 +1,4 @@
+   pymavlink
+   matplotlib
+   ultralytics
+   opencv-python

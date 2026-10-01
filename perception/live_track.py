@@ -1,15 +1,17 @@
 import cv2
 from ultralytics import YOLO
 import math
+import time
 
 model = YOLO("yolo11n.pt")
 cap = cv2.VideoCapture(0)   # Iriun camera; try 1 or 2 if 0 is wrong
 target_id = None
-lost_frames = 0
+lost_since = None
 last_boxes=[]
 
 width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)   # frame width in pixels, e.g. 1280
 hfov_deg = 65                                # iPhone camera's horizontal field of view (estimate)
+LOST_TIMEOUT_S = 2.0 #SAAF-3 [TBR]
 
 cx = width / 2
 fx = (width / 2) / math.tan(math.radians(hfov_deg / 2))
@@ -58,17 +60,19 @@ while True:
             cv2.putText(frame, f"ID {tid}", (int(x1), int(y1) - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-    # Count frames the target has been missing; relock after ~1 second
+    # Target-loss handling: never drops the target on its own (PER-3, SAF-3)
     if found:
-        lost_frames = 0
-    else:
-        lost_frames += 1
-        if target_id is not None:
-            cv2.putText(frame, "Target lost", (30, 40),
+        lost_since = None
+    elif target_id is not None:
+        if lost_since is None:
+            lost_since = time.time()
+        lost_for = time.time() - lost_since
+        if lost_for < LOST_TIMEOUT_S:
+            cv2.putText(frame, f"LOST {lost_for:.1f} s", (30, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        else:
+            cv2.putText(frame, "Hover - click to redesignate", (30, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        if lost_frames > 30:
-            target_id = None
-            lost_frames = 0
 
     cv2.imshow("Follow-me perception", frame)
     key = cv2.waitKey(1) & 0xFF

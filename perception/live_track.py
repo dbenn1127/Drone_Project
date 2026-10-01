@@ -6,6 +6,7 @@ model = YOLO("yolo11n.pt")
 cap = cv2.VideoCapture(0)   # Iriun camera; try 1 or 2 if 0 is wrong
 target_id = None
 lost_frames = 0
+last_boxes=[]
 
 width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)   # frame width in pixels, e.g. 1280
 hfov_deg = 65                                # iPhone camera's horizontal field of view (estimate)
@@ -14,6 +15,20 @@ cx = width / 2
 fx = (width / 2) / math.tan(math.radians(hfov_deg / 2))
 
 print("width:", width, "cx:", cx, "fx:", fx)
+
+def on_click(event, x, y, flags, param):
+    global target_id
+    if event == cv2.EVENT_LBUTTONDOWN:
+        for x1, y1, x2, y2, tid in last_boxes:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                target_id = tid
+                print(f"Target designated: ID {tid}")
+                break
+        
+
+cv2.namedWindow("Follow-me perception", cv2.WINDOW_NORMAL)
+cv2.setMouseCallback("Follow-me perception", on_click)
+
 
 while True:
     ok, frame = cap.read()
@@ -24,15 +39,14 @@ while True:
                           classes=[0], verbose=False)
     boxes = results[0].boxes
     found = False
-    cv2.line(frame, (int(cx), 0), (int(cx), frame.shape[0]), (255, 255, 255), 1)
-    # Lock onto the largest person if we don't have a target
-    if target_id is None and boxes.id is not None:
-        areas = [(x2 - x1) * (y2 - y1) for x1, y1, x2, y2 in boxes.xyxy.tolist()]
-        target_id = boxes.id.int().tolist()[areas.index(max(areas))]
+    last_boxes.clear()
 
+    cv2.line(frame, (int(cx), 0), (int(cx), frame.shape[0]), (255, 255, 255), 1)
+   
     # Draw every person; target is green
     if boxes.id is not None:
         for (x1, y1, x2, y2), tid in zip(boxes.xyxy.tolist(), boxes.id.int().tolist()):
+            last_boxes.append((x1, y1, x2, y2, tid))
             if tid == target_id:
                 u= (x1+x2)/2
                 bearing = math.degrees(math.atan((u-cx)/fx))

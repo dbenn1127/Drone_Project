@@ -4,7 +4,8 @@
 //      added power distribution, motor chain, GPS, Remote ID, and RF links to the ground.
 //
 // Layout: Requirements -> Interfaces -> Logical -> Behavior -> Physical -> Allocation -> Traceability
-// Values marked TBR are first-pass; PER-3 and SAF-2 are pending confirmation.
+// Values marked TBR are first-pass; 
+// Values marked TBR are first-pass. PER-3 and SAF-2 confirmed 2026-10-01.
 
 package FollowMeDrone {
     private import ScalarValues::*;
@@ -43,7 +44,7 @@ package FollowMeDrone {
             }
             requirement <'PER-3'> operatorDesignationOnly {
                 doc /* Acquire a target only by operator designation; do not transfer to a
-                       different person during flight without operator action. [PENDING CONFIRMATION] */
+                       different person during flight without operator action. */
             }
             requirement <'PER-4'> frameRate {
                 doc /* Process frames for detection and tracking at >= 10 Hz on the companion. */
@@ -88,7 +89,7 @@ package FollowMeDrone {
                        out of Guided returns full control immediately. */
             }
             requirement <'SAF-2'> noArmTakeoffLandModeChange {
-                doc /* Companion shall not arm, take off, land, or change flight mode. [PENDING CONFIRMATION] */
+                doc /* Companion shall not arm, take off, land, or change flight mode. */
             }
             requirement <'SAF-3'> lostTargetHover {
                 doc /* If target lost > 2 s, command zero velocity (hover) and alert operator via GCS. [TBR] */

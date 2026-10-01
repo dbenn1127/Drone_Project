@@ -20,7 +20,7 @@ Pending = design decision awaiting confirmation.
 |---|---|---|---|---|---|
 | PER-1 | Detect persons in camera imagery at ranges from 3 m to 20 m. | Test | N-1 | Jetson (autonomy) | TBR |
 | PER-2 | Maintain the designated target's identity through viewpoint changes (front, side, rear) and occlusions of up to 1.0 s. | Test | N-1 | Jetson (autonomy) | TBR |
-| PER-3 | Acquire a target only by operator designation; do not transfer to a different person during flight without operator action. | Simulation | N-1, N-2 | Follow-mode state machine | Pending |
+| PER-3 | Acquire a target only by operator designation; do not transfer to a different person during flight without operator action. | Simulation | N-1, N-2 | Follow-mode state machine | Confirmed |
 | PER-4 | Process frames for detection and tracking at no less than 10 Hz on the companion computer. | Test | N-1 | Jetson (autonomy) | |
 v
 ## Estimation
@@ -46,7 +46,7 @@ v
 | ID | Requirement | Verify | Traces to | Satisfied by | Status |
 |---|---|---|---|---|---|
 | SAF-1 | The companion sends motion commands only while the vehicle is in Guided mode; an operator mode change out of Guided returns full control immediately. | Test | N-2 | Follow-mode state machine | |
-| SAF-2 | The companion shall not arm, take off, land, or change flight mode; these are reserved for the operator. | Inspection | N-2 | Follow-mode state machine | Pending |
+| SAF-2 | The companion shall not arm, take off, land, or change flight mode; these are reserved for the operator. | Inspection | N-2 | Follow-mode state machine | Confirmed |
 | SAF-3 | If the target is lost for more than 2 s, command zero velocity (hover) and alert the operator via the GCS. | Simulation | N-3 | Follow-mode state machine | TBR |
 | SAF-4 | Do not command motion within 5 m horizontally of the target, and do not fly directly over people. | Simulation | N-3 | Jetson (autonomy) | |
 | SAF-5 | If motion commands stop arriving for more than 3 s, the vehicle stops and holds position. | Test | N-3 | Pixhawk 6C (avionics) | TBR |
@@ -67,8 +67,6 @@ v
 
 ## Open items
 
-- [ ] Confirm PER-3: no automatic relock onto a different person in flight.
-- [ ] Confirm SAF-2: the companion only steers in Guided mode and never arms, takes off, lands, or changes modes.
 - [ ] Resolve PER-1, PER-2 on the bench with the Jetson.
 - [ ] Resolve EST-1 to EST-3 after camera calibration.
 - [ ] Resolve CTL-1 to CTL-3 in SITL.

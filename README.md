@@ -2,7 +2,7 @@
 
 A vision-based quadcopter that follows a person using its own camera — no phone, beacon, or GPS tag on the person. Built as a systems engineering portfolio project: needs → requirements → architecture → simulation → hardware, with the design captured in a SysML v2 model that lives alongside the code.
 
-**Status:** Architecture baselined. Perception work underway (bearing to target working on live video). Simulation next; no flight hardware yet.
+**Status:** Architecture baselined. Scripted flights working in ArduPilot SITL. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Next: follow controller in simulation.
 
 ## How it works
 
@@ -30,6 +30,16 @@ Key design decisions:
 ![Follow-mode state machine](docs/followModeStates.png)
 
 More diagrams are in [`docs/`](docs/).
+
+## Simulation
+
+Mission scripts fly ArduPilot in software-in-the-loop (SITL) simulation through Mission Planner, using pymavlink. They run go/no-go checks (battery, GPS), require operator confirmation before arming, log telemetry to CSV, and include script-side failsafes (low battery, waypoint timeout, operator abort), with ArduPilot's own failsafes underneath.
+
+![Scripted waypoint flight in ArduPilot SITL, replayed from logged telemetry](docs/flight_3d.gif)
+
+*Scripted 20 m square at 10 m altitude in ArduPilot SITL, replayed in 3D from the flight log.*
+
+→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `plot_flight_3d.py` (3D replay)
 
 ## Requirements
 
@@ -62,6 +72,7 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 ## Roadmap
 
 - [x] Bearing to target: live YOLO + ByteTrack on video
+- [x] Scripted SITL flights: takeoff/land and waypoint pattern with failsafes
 - [ ] Distance estimate from bounding-box height
 - [ ] Smooth bearing and distance (moving average, then Kalman filter)
 - [ ] Checkerboard camera calibration

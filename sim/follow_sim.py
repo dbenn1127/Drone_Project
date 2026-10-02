@@ -7,9 +7,9 @@ it, the same two numbers the camera code (perception/live_track.py) produces.
 Built in stages:
     a. Fake target + range/bearing printout, drone hovering   [done]
     b. Yaw control: turn to face the target                   [done]
-    c. Forward speed: hold the standoff distance              <- next
-    d. Limits and keep-out zone
-    e. Logging and 3D replay
+    c. Forward speed: hold the standoff distance              [done]
+    d. Limits, keep-out zone, gain tuning                     [mostly done; circling test open]
+    e. Test cases by name, target logging, 3D replay          <- next
 
 Built from pattern_flight.py (sections 1-5 are the same harness).
 
@@ -22,35 +22,48 @@ WHAT IT DOES
     6. Climbs, then follows the fake target for FOLLOW_SECONDS, then lands.
 
 HOW TO RUN
-    Start Mission Planner's Multirotor simulation first, then in Anaconda Prompt
-    (yolo environment):
+    Restart Mission Planner's Multirotor simulation first (fresh position and
+    battery every run), then in Anaconda Prompt (yolo environment):
         cd sim
         python follow_sim.py              (connects to the simulator)
 
 WHO DOES WHAT
     This script plays two roles, and they follow different rules:
-      - TEST HARNESS (sections 4-5, and the landing): stands in for the pilot.
-        It arms, takes off, and lands, which only the operator may do on the
-        real system.
+      - TEST HARNESS (sections 4-5, the landing, and the failsafes): stands in
+        for the pilot. It arms, takes off, and lands, which only the operator
+        may do on the real system.
       - FOLLOW LOGIC (the "follow" phase): stands in for the companion computer.
         It must obey SAF-2: send velocity and yaw-rate commands only, never
         arm, take off, land, or change mode.
     ArduPilot, the autopilot, does all the actual flying.
 
-REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
-    CTL-1  Keep target within ±10° of centerline            (stage b onward)
-    CTL-2  Hold 8 m standoff within ±2 m                    (stage c onward)
-    CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60°/s  (stages b-d)
-    CTL-4  No altitude commands                             (stage b onward)
-    SAF-4  Never command motion within 5 m of the target    (stage d)
+CONTROL LAW (one pass, 10 Hz)
+    yaw_rate = YAW_GAIN * bearing                        capped at +/-60 deg/s
+    speed    = RANGE_GAIN * (range - STANDOFF_M)         capped at +/-5 m/s
+    speed    = min(speed, KEEP_OUT_GAIN * (range - KEEP_OUT_M))   keep-out ramp
+    velocity = speed along the line to the target (split into north/east)
 
-FINDINGS SO FAR
+REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
+    CTL-1  Keep target within +/-10 deg of centerline       PASS (straight walk); circling test open
+    CTL-2  Hold 8 m standoff within +/-2 m                  PASS: 9.5 m (0.5 m margin)
+    CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60 deg/s   implemented (mask, clamps, 10 Hz loop)
+    CTL-4  No altitude commands                             PASS: vz always 0; altitude 9.6-10.0 m
+    SAF-4  Stay at least 5 m from the target                PASS (fault injection, keep-out v2)
+
+FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full logs)
     Stage a: loop runs at 10 Hz; range and bearing match hand calculation.
-    Stage b (YAW_GAIN 0.5): steady bearing lag of about 2-3° with the target
-      25-30 m away, within CTL-1. Proportional-control lag is roughly
-      (target's angular rate) / YAW_GAIN. At the 8 m standoff a 1.5 m/s target
-      sweeps about 11°/s, predicting about 21° of lag, which would FAIL CTL-1.
-      Raise the gain (about 2) with the 60°/s cap in stage d.
+    Stage b: proportional yaw lags a moving target by about (angular rate) / YAW_GAIN.
+      Gain 0.5 gave 2-3 deg at 25-30 m but predicts ~21 deg at 8 m. Raised to 2.0.
+    Stage c: proportional range control settles at STANDOFF + target speed / RANGE_GAIN.
+      Gain 0.5 -> 11.0 m (predicted 11, FAILS CTL-2). Gain 1.0 -> 9.51 m (predicted 9.5, PASSES).
+    Stage d, SAF-4 fault injection (STANDOFF_M deliberately set to 3.0):
+      v1 "zero the approach speed inside 5 m" FAILED: momentum carried the drone
+        to 3.2 m, then it cycled 4.4-6.2 m (40% of samples inside 5 m).
+        Commanding zero at the line is not the same as staying outside the line.
+      v2 "approach speed ramps down to zero at 5 m" PASSED: closest 6.9 m, settled
+        at 8.0 m (where 0.5 * (r - 5) = 1.5 m/s), 0 samples inside 5 m.
+    Safety harness: mode changes are confirmed, not fire-and-forget (an unconfirmed
+      Ctrl+C LAND once left the drone hovering); any crash in the loop also lands.
 
 OUTPUT
     follow_log.csv in this folder (gitignored; regenerated every run): one row
@@ -76,14 +89,19 @@ from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
 TARGET_ALT_M = 10       # flight altitude, meters above home (CTL-4: held, never changed)
 FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
 
-# Follow controller gains
-YAW_GAIN = 2.0          # deg/s of turn per deg of bearing error (proportional).
+# Follow controller
 STANDOFF_M = 8.0        # CTL-2: default follow distance (m)
-KEEP_OUT_M = 5.0        # SAF-4: never command motion toward the target inside this range
-RANGE_GAIN = 1.0        # m/s of forward/back per m of range error (proportional).
-MAX_SPEED_MS = 5.0      # CTL-3 [TBR]
-MAX_YAW_RATE_DPS = 60   # CTL-3 [TBR]
-                        
+YAW_GAIN = 2.0          # deg/s of turn per deg of bearing error (proportional)
+RANGE_GAIN = 1.0        # m/s of speed per m of range error (proportional)
+
+# Command limits (CTL-3)
+MAX_SPEED_MS = 5.0      # max horizontal speed command, m/s [TBR]
+MAX_YAW_RATE_DPS = 60   # max yaw-rate command, deg/s [TBR]
+
+# Keep-out (SAF-4)
+KEEP_OUT_M = 5.0        # the drone must stay at least this far from the target (m)
+KEEP_OUT_GAIN = 0.5     # m/s of allowed approach speed per m outside the keep-out
+
 # SCRIPT-SIDE FAILSAFE (mission judgment; only works while the link is up and
 # this script is running). The autopilot's own failsafes (SAF-6) are the
 # backstop underneath; set those in Mission Planner.
@@ -259,20 +277,6 @@ def send_velocity_yaw_rate(vn, ve, yaw_rate_dps):
     )
 
 
-def failsafe(reason, mode, t):
-    """Abort the mission: say why, then hand control to an autopilot mode.
-
-    The script doesn't fly the drone home itself; it switches to a mode
-    where the AUTOPILOT does (RTL = return to launch, LAND = land in place),
-    so recovery keeps working even if this script stops. The mode change is
-    confirmed, not fire-and-forget.
-    """
-    print(f"  !! {t:6.1f} s  FAILSAFE: {reason} -> switching to {mode}")
-    if set_mode_confirmed(mode):
-        print(f"  {mode} confirmed. The autopilot has control.")
-    else:
-        print(f"  !! {mode} NOT confirmed. Take over from Mission Planner or RC.")
-
 def set_mode_confirmed(mode, timeout=5):
     """Change flight mode and wait until the drone confirms it.
 
@@ -292,6 +296,22 @@ def set_mode_confirmed(mode, timeout=5):
         if m.flightmode == mode:
             return True
     return False
+
+
+def failsafe(reason, mode, t):
+    """Abort the mission: say why, then hand control to an autopilot mode.
+
+    The script doesn't fly the drone home itself; it switches to a mode
+    where the AUTOPILOT does (RTL = return to launch, LAND = land in place),
+    so recovery keeps working even if this script stops. The mode change is
+    confirmed, not fire-and-forget.
+    """
+    print(f"  !! {t:6.1f} s  FAILSAFE: {reason} -> switching to {mode}")
+    if set_mode_confirmed(mode):
+        print(f"  {mode} confirmed. The autopilot has control.")
+    else:
+        print(f"  !! {mode} NOT confirmed. Take over from Mission Planner or RC.")
+
 
 def go_no_go(min_battery_pct=80, min_satellites=8):
     """Return a list of reasons NOT to fly. An empty list means GO.
@@ -386,9 +406,9 @@ print(f"Taking off to {TARGET_ALT_M} m")
 #   1. read position   2. log a row   3. print status   4. check for a phase change
 # ===========================================================================
 
-# Ctrl+C failsafe: if you press Ctrl+C mid-flight, the "except" at the bottom
-# commands LAND before the script exits, so the drone is never left hovering
-# with nobody in charge.
+# Abort handlers at the bottom: Ctrl+C (operator abort) or any crash in this
+# loop commands a confirmed LAND before the script exits, so the drone is never
+# left hovering with nobody in charge.
 try:
     with open("follow_log.csv", "w", newline="") as f:
         log = csv.writer(f)
@@ -476,24 +496,36 @@ try:
                 # Relative to the nose, wrapped to -180..+180. + = target to the right.
                 rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
 
-                # --- Control (stage d: yaw + standoff, with limits) ---
-                # Proportional: turn rate scales with how far off-center the target is.
-                yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))                  # deg/s, capped at ±60 (CTL-3); + = turn right
-                speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))                # m/s toward the target, capped at ±5 (CTL-3)
-                if range_m < KEEP_OUT_M:
-                    speed = min(speed, 0)            # allow backing away only (SAF-4)
+                # --- Control (stage d: yaw + standoff, with limits and keep-out) ---
+                # Yaw: turn rate proportional to how far off-center the target is,
+                # capped at +/-60 deg/s (CTL-3). + = turn right.
+                yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))
+
+                # Speed: proportional to range error, capped at +/-5 m/s (CTL-3).
+                # + = toward the target, - = away from it.
+                speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))
+
+                # Keep-out (SAF-4): the closer to 5 m, the slower the allowed approach;
+                # zero at 5 m, negative (back away) inside it. Runs every pass so the
+                # drone is already braking when it reaches the line.
+                speed = min(speed, KEEP_OUT_GAIN * (range_m - KEEP_OUT_M))
+
+                # Split speed into north/east along the line to the target.
+                # Guard: no direction exists if the drone is exactly on the target.
                 if range_m > 0:
-                    vn = speed * dn / range_m        # north part of the velocity toward the target
-                    ve = speed * de / range_m        # east part
+                    vn = speed * dn / range_m
+                    ve = speed * de / range_m
                 else:
                     vn = 0
                     ve = 0
-                send_velocity_yaw_rate(vn, ve, yaw_rate)             # turn and move toward/away from the target
+                send_velocity_yaw_rate(vn, ve, yaw_rate)   # the only command the follow logic sends (SAF-2)
 
                 print(f"  follow t {t_follow:5.1f} s  target N {tn:5.1f} E {te:5.1f}  "
-                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  yaw {yaw_rate:+6.1f} deg/s  speed {speed:+5.1f} m/s")
+                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  "
+                      f"yaw {yaw_rate:+6.1f} deg/s  speed {speed:+5.1f} m/s")
 
                 # --- End of test: the harness lands (pilot's role, not the follow logic) ---
+                # If LAND isn't confirmed, phase stays "follow" and it retries next pass.
                 if t_follow > FOLLOW_SECONDS:
                     if set_mode_confirmed("LAND"):
                         phase = "land"
@@ -505,7 +537,19 @@ try:
                 # On the ground and disarmed: the flight is over.
                 break
 
+except KeyboardInterrupt:
+    # Operator pressed Ctrl+C. (KeyboardInterrupt is NOT caught by
+    # "except Exception" below, so it needs its own handler.)
+    print("\n  !! FAILSAFE: operator pressed Ctrl+C -> switching to LAND")
+    if set_mode_confirmed("LAND"):
+        print("  LAND confirmed. The autopilot is landing.")
+    else:
+        print("  !! LAND NOT confirmed. Land manually from Mission Planner (Actions > LAND).")
+    raise SystemExit("Script stopped.")
+
 except Exception as e:
+    # Any crash in the loop (typo, bad value, lost connection): land, then
+    # re-raise so the original error and line number are still shown.
     print(f"\n  !! FAILSAFE: script error ({e}) -> switching to LAND")
     if set_mode_confirmed("LAND"):
         print("  LAND confirmed. The autopilot is landing.")

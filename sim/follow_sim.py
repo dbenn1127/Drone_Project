@@ -77,12 +77,13 @@ TARGET_ALT_M = 10       # flight altitude, meters above home (CTL-4: held, never
 FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
 
 # Follow controller gains
-YAW_GAIN = 0.5          # deg/s of turn per deg of bearing error (proportional).
+YAW_GAIN = 2.0          # deg/s of turn per deg of bearing error (proportional).
 STANDOFF_M = 8.0        # CTL-2: default follow distance (m)
-RANGE_GAIN = 0.5        # m/s of forward/back per m of range error (proportional).
-
-                        # Too low for the 8 m standoff (see FINDINGS); retune in stage d.
-
+KEEP_OUT_M = 5.0        # SAF-4: never command motion toward the target inside this range
+RANGE_GAIN = 1.0        # m/s of forward/back per m of range error (proportional).
+MAX_SPEED_MS = 5.0      # CTL-3 [TBR]
+MAX_YAW_RATE_DPS = 60   # CTL-3 [TBR]
+                        
 # SCRIPT-SIDE FAILSAFE (mission judgment; only works while the link is up and
 # this script is running). The autopilot's own failsafes (SAF-6) are the
 # backstop underneath; set those in Mission Planner.
@@ -475,10 +476,12 @@ try:
                 # Relative to the nose, wrapped to -180..+180. + = target to the right.
                 rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
 
-                # --- Control (stage c: yaw + standoff) ---
+                # --- Control (stage d: yaw + standoff, with limits) ---
                 # Proportional: turn rate scales with how far off-center the target is.
-                yaw_rate = YAW_GAIN * rel_bearing                    # deg/s; + = turn right
-                speed = RANGE_GAIN * (range_m - STANDOFF_M)                # m/s; + = toward the target
+                yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))                  # deg/s, capped at ±60 (CTL-3); + = turn right
+                speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))                # m/s toward the target, capped at ±5 (CTL-3)
+                if range_m < KEEP_OUT_M:
+                    speed = min(speed, 0)            # allow backing away only (SAF-4)
                 if range_m > 0:
                     vn = speed * dn / range_m        # north part of the velocity toward the target
                     ve = speed * de / range_m        # east part
@@ -502,13 +505,13 @@ try:
                 # On the ground and disarmed: the flight is over.
                 break
 
-except KeyboardInterrupt:
-    print("\n  !! FAILSAFE: operator pressed Ctrl+C -> switching to LAND")
+except Exception as e:
+    print(f"\n  !! FAILSAFE: script error ({e}) -> switching to LAND")
     if set_mode_confirmed("LAND"):
         print("  LAND confirmed. The autopilot is landing.")
     else:
         print("  !! LAND NOT confirmed. Land manually from Mission Planner (Actions > LAND).")
-    raise SystemExit("Script stopped.")
+    raise
 
 print("Landed and disarmed. Flight log saved to follow_log.csv")
 

@@ -2,7 +2,7 @@
 
 A vision-based quadcopter that follows a person using its own camera — no phone, beacon, or GPS tag on the person. Built as a systems engineering portfolio project: needs → requirements → architecture → simulation → hardware, with the design captured in a SysML v2 model that lives alongside the code.
 
-**Status:** Architecture baselined. Scripted flights working in ArduPilot SITL. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Next: follow controller in simulation.
+**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Follow controller flying in ArduPilot SITL against a simulated walking target: holds 9.5 m at an 8 m standoff (requirement 8 ± 2 m) and never closes inside the 5 m keep-out zone under fault injection. Next: circling-target test and logged test cases.
 
 ## How it works
 
@@ -39,7 +39,20 @@ Mission scripts fly ArduPilot in software-in-the-loop (SITL) simulation through 
 
 *Scripted 20 m square at 10 m altitude in ArduPilot SITL, replayed in 3D from the flight log.*
 
-→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `plot_flight_3d.py` (3D replay)
+### Follow controller (in progress)
+
+`follow_sim.py` flies the drone after a simulated target walking at 1.5 m/s. The follow logic commands only horizontal velocity and yaw rate in Guided mode (SAF-2); the test harness plays the pilot for arming, takeoff, and landing. Ctrl+C or any script error switches the vehicle to LAND and waits for confirmation.
+
+| Test | Result | Requirement |
+|---|---|---|
+| Straight walk, 1.5 m/s, standoff 8 m | Settles at 9.5 m (predicted 9.5 m from proportional-control lag) | CTL-2 (8 ± 2 m): pass |
+| Same run, bearing to target | ≤ 5.2° | CTL-1 (±10°): pass, straight path only |
+| Same run, altitude | Steady; no altitude commands sent | CTL-4: pass |
+| Fault injection: standoff set to 3 m (inside keep-out) | Closest approach 6.9 m; 0 of 600 samples inside 5 m | SAF-4: pass |
+
+The first keep-out design (zero the approach command at 5 m) failed the fault-injection test: momentum carried the drone to 3.2 m. The fix ramps approach speed down in proportion to distance from the 5 m line, so the drone brakes before reaching it.
+
+→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `follow_sim.py` (follow controller), `plot_flight_3d.py` (3D replay)
 
 ## Requirements
 
@@ -73,10 +86,10 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 
 - [x] Bearing to target: live YOLO + ByteTrack on video
 - [x] Scripted SITL flights: takeoff/land and waypoint pattern with failsafes
-- [ ] Distance estimate from bounding-box height
+- [ ] Distance estimate from bounding-box height (implemented; tape-measure test pending)
 - [ ] Smooth bearing and distance (moving average, then Kalman filter)
 - [ ] Checkerboard camera calibration
-- [ ] Follow controller in ArduPilot SITL chasing a simulated target
+- [ ] Follow controller in ArduPilot SITL chasing a simulated target (straight-walk and keep-out tests passing; circling test and logging next)
 - [ ] Live camera driving the simulated drone
 - [ ] Safety state machine in code (searching, tracking, lost, hover)
 - [ ] Full Gazebo simulation with the camera on the drone

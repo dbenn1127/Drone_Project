@@ -5,9 +5,9 @@ Roadmap step 4: the follow controller in ArduPilot SITL, with no camera. A fake
 target walks a known path; each loop the script computes range and bearing to
 it, the same two numbers the camera code (perception/live_track.py) produces.
 Built in stages:
-    a. Fake target + range/bearing printout, drone hovering   <- current stage
-    b. Yaw control: turn to face the target
-    c. Forward speed: hold the standoff distance
+    a. Fake target + range/bearing printout, drone hovering   [done]
+    b. Yaw control: turn to face the target                   [done]
+    c. Forward speed: hold the standoff distance              <- next
     d. Limits and keep-out zone
     e. Logging and 3D replay
 
@@ -22,7 +22,8 @@ WHAT IT DOES
     6. Climbs, then follows the fake target for FOLLOW_SECONDS, then lands.
 
 HOW TO RUN
-    Start Mission Planner's Multirotor simulation first, then in Anaconda Prompt:
+    Start Mission Planner's Multirotor simulation first, then in Anaconda Prompt
+    (yolo environment):
         cd sim
         python follow_sim.py              (connects to the simulator)
 
@@ -36,12 +37,20 @@ WHO DOES WHAT
         arm, take off, land, or change mode.
     ArduPilot, the autopilot, does all the actual flying.
 
-REQUIREMENTS THIS SCRIPT WILL PRODUCE EVIDENCE FOR
-    CTL-1  Keep target within ±10° of centerline           (stage b onward)
-    CTL-2  Hold 8 m standoff within ±2 m                   (stage c onward)
-    CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60°/s (stages b-d)
-    CTL-4  No altitude commands                            (stage b onward)
-    SAF-4  Never command motion within 5 m of the target   (stage d)
+REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
+    CTL-1  Keep target within ±10° of centerline            (stage b onward)
+    CTL-2  Hold 8 m standoff within ±2 m                    (stage c onward)
+    CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60°/s  (stages b-d)
+    CTL-4  No altitude commands                             (stage b onward)
+    SAF-4  Never command motion within 5 m of the target    (stage d)
+
+FINDINGS SO FAR
+    Stage a: loop runs at 10 Hz; range and bearing match hand calculation.
+    Stage b (YAW_GAIN 0.5): steady bearing lag of about 2-3° with the target
+      25-30 m away, within CTL-1. Proportional-control lag is roughly
+      (target's angular rate) / YAW_GAIN. At the 8 m standoff a 1.5 m/s target
+      sweeps about 11°/s, predicting about 21° of lag, which would FAIL CTL-1.
+      Raise the gain (about 2) with the 60°/s cap in stage d.
 
 OUTPUT
     follow_log.csv in this folder (gitignored; regenerated every run): one row
@@ -53,7 +62,7 @@ OUTPUT
 # IMPORTS
 # ---------------------------------------------------------------------------
 import csv    # writes the flight log as a CSV file
-import math   # hypot and atan2 for range and bearing to the target
+import math   # hypot and atan2 for range and bearing; radians for yaw rate
 import sys    # reads anything typed after the script name (the connection)
 import time   # clock and stopwatch functions
 
@@ -64,8 +73,12 @@ from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
 # FLIGHT SETTINGS
 # ALL_CAPS names are a Python convention for "set once, don't change later."
 # ---------------------------------------------------------------------------
-TARGET_ALT_M = 10       # flight altitude, meters above the launch point (CTL-4: held, never changed)
+TARGET_ALT_M = 10       # flight altitude, meters above home (CTL-4: held, never changed)
 FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
+
+# Follow controller gains
+YAW_GAIN = 0.5          # deg/s of turn per deg of bearing error (proportional).
+                        # Too low for the 8 m standoff (see FINDINGS); retune in stage d.
 
 # SCRIPT-SIDE FAILSAFE (mission judgment; only works while the link is up and
 # this script is running). The autopilot's own failsafes (SAF-6) are the
@@ -213,6 +226,33 @@ def local_position():
     if msg is None:
         return None
     return msg.x, msg.y
+
+
+def send_velocity_yaw_rate(vn, ve, yaw_rate_dps):
+    """Command horizontal velocity (m/s, north/east) and yaw rate (deg/s).
+
+    The ONLY motion command the follow logic sends (SAF-2, CTL-3).
+    Vertical velocity is always 0, so the autopilot holds altitude (CTL-4).
+    Must be resent every loop: in GUIDED, ArduPilot stops the vehicle if
+    velocity commands stop arriving for a few seconds (ties to SAF-5).
+    """
+    # type_mask: one switch per field; 1 = IGNORE that field. Read right to left:
+    #   yaw_rate yaw | accel | velocity | position
+    #      0      1  | 1 1 1 |  0 0 0   |  1 1 1
+    # Uses velocity and yaw rate; ignores position, acceleration, and yaw angle.
+    # (Bit 9, between accel and yaw, is the unused "accel is force" flag = 0.)
+    VELOCITY_AND_YAW_RATE = 0b010111000111   # = 1479
+    m.mav.set_position_target_local_ned_send(
+        0,                                        # time_boot_ms (not needed)
+        m.target_system, m.target_component,
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED,      # north/east/down frame
+        VELOCITY_AND_YAW_RATE,
+        0, 0, 0,                                  # position (ignored)
+        vn, ve, 0,                                # velocity north, east, down (0 = hold altitude)
+        0, 0, 0,                                  # acceleration (ignored)
+        0,                                        # yaw angle (ignored)
+        math.radians(yaw_rate_dps),               # yaw rate: MAVLink wants radians/s
+    )
 
 
 def failsafe(reason, mode, t):
@@ -396,19 +436,30 @@ try:
                     phase = "return"
                     continue
 
-                # ---- STAGE A: Derek writes this part ----
+                # --- Where is the target? (stands in for the camera estimate) ---
                 t_follow = time.time() - follow_started   # seconds since following began
                 tn, te = target_position(t_follow)        # where the target is now (m north, m east)
                 if here[0] is None:
                     continue                              # no local position yet; skip this pass
-                dn, de = tn - here[0], te - here[1]
-                range_m =  math.hypot(dn, de)   
-                compass_bearing = math.degrees(math.atan2(de, dn))      
+
+                # --- Range and bearing (same quantities perception produces) ---
+                dn, de = tn - here[0], te - here[1]       # target relative to drone (m north, m east)
+                range_m = math.hypot(dn, de)              # straight-line distance (m)
+                compass_bearing = math.degrees(math.atan2(de, dn))   # direction to target; 0 = north, 90 = east
+                # Relative to the nose, wrapped to -180..+180. + = target to the right.
                 rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
+
+                # --- Control (stage b: yaw only) ---
+                # Proportional: turn rate scales with how far off-center the target is.
+                yaw_rate = YAW_GAIN * rel_bearing                    # deg/s; + = turn right
+                send_velocity_yaw_rate(0, 0, yaw_rate)               # no translation until stage c
+
                 print(f"  follow t {t_follow:5.1f} s  target N {tn:5.1f} E {te:5.1f}  "
-                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg")
+                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  yaw {yaw_rate:+6.1f} deg/s")
+
+                # --- End of test: the harness lands (pilot's role, not the follow logic) ---
                 if t_follow > FOLLOW_SECONDS:
-                    m.set_mode(m.mode_mapping()["LAND"])   # test harness lands (pilot's role)
+                    m.set_mode(m.mode_mapping()["LAND"])
                     phase = "land"
                     print(f"  >> {t:6.1f} s  follow complete -> land (LAND mode requested)")
 

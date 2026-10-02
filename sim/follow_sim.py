@@ -78,6 +78,9 @@ FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
 
 # Follow controller gains
 YAW_GAIN = 0.5          # deg/s of turn per deg of bearing error (proportional).
+STANDOFF_M = 8.0        # CTL-2: default follow distance (m)
+RANGE_GAIN = 0.5        # m/s of forward/back per m of range error (proportional).
+
                         # Too low for the 8 m standoff (see FINDINGS); retune in stage d.
 
 # SCRIPT-SIDE FAILSAFE (mission judgment; only works while the link is up and
@@ -472,13 +475,20 @@ try:
                 # Relative to the nose, wrapped to -180..+180. + = target to the right.
                 rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
 
-                # --- Control (stage b: yaw only) ---
+                # --- Control (stage c: yaw + standoff) ---
                 # Proportional: turn rate scales with how far off-center the target is.
                 yaw_rate = YAW_GAIN * rel_bearing                    # deg/s; + = turn right
-                send_velocity_yaw_rate(0, 0, yaw_rate)               # no translation until stage c
+                speed = RANGE_GAIN * (range_m - STANDOFF_M)                # m/s; + = toward the target
+                if range_m > 0:
+                    vn = speed * dn / range_m        # north part of the velocity toward the target
+                    ve = speed * de / range_m        # east part
+                else:
+                    vn = 0
+                    ve = 0
+                send_velocity_yaw_rate(vn, ve, yaw_rate)             # turn and move toward/away from the target
 
                 print(f"  follow t {t_follow:5.1f} s  target N {tn:5.1f} E {te:5.1f}  "
-                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  yaw {yaw_rate:+6.1f} deg/s")
+                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  yaw {yaw_rate:+6.1f} deg/s  speed {speed:+5.1f} m/s")
 
                 # --- End of test: the harness lands (pilot's role, not the follow logic) ---
                 if t_follow > FOLLOW_SECONDS:

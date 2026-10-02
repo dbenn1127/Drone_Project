@@ -260,11 +260,34 @@ def failsafe(reason, mode, t):
 
     The script doesn't fly the drone home itself; it switches to a mode
     where the AUTOPILOT does (RTL = return to launch, LAND = land in place),
-    so recovery keeps working even if this script stops.
+    so recovery keeps working even if this script stops. The mode change is
+    confirmed, not fire-and-forget.
     """
     print(f"  !! {t:6.1f} s  FAILSAFE: {reason} -> switching to {mode}")
-    m.set_mode(m.mode_mapping()[mode])
+    if set_mode_confirmed(mode):
+        print(f"  {mode} confirmed. The autopilot has control.")
+    else:
+        print(f"  !! {mode} NOT confirmed. Take over from Mission Planner or RC.")
 
+def set_mode_confirmed(mode, timeout=5):
+    """Change flight mode and wait until the drone confirms it.
+
+    Resends the request about once a second until a heartbeat reports the
+    new mode, or the timeout runs out. Returns True if confirmed, False if not.
+    Safety actions must be verified, not fire-and-forget.
+    """
+    deadline = time.time() + timeout
+    last_sent = 0
+    while time.time() < deadline:
+        if time.time() - last_sent > 1:
+            m.set_mode(m.mode_mapping()[mode])
+            last_sent = time.time()
+        msg = m.recv_match(type=["HEARTBEAT", "STATUSTEXT"], blocking=True, timeout=0.5)
+        if msg and msg.get_type() == "STATUSTEXT":
+            print("  autopilot says:", msg.text)
+        if m.flightmode == mode:
+            return True
+    return False
 
 def go_no_go(min_battery_pct=80, min_satellites=8):
     """Return a list of reasons NOT to fly. An empty list means GO.
@@ -459,9 +482,11 @@ try:
 
                 # --- End of test: the harness lands (pilot's role, not the follow logic) ---
                 if t_follow > FOLLOW_SECONDS:
-                    m.set_mode(m.mode_mapping()["LAND"])
-                    phase = "land"
-                    print(f"  >> {t:6.1f} s  follow complete -> land (LAND mode requested)")
+                    if set_mode_confirmed("LAND"):
+                        phase = "land"
+                        print(f"  >> {t:6.1f} s  follow complete -> LAND confirmed")
+                    else:
+                        print(f"  !! {t:6.1f} s  LAND NOT confirmed; retrying. Land manually if this repeats.")
 
             elif phase in ("land", "return") and alt < 0.3 and not m.motors_armed():
                 # On the ground and disarmed: the flight is over.
@@ -469,9 +494,11 @@ try:
 
 except KeyboardInterrupt:
     print("\n  !! FAILSAFE: operator pressed Ctrl+C -> switching to LAND")
-    m.set_mode(m.mode_mapping()["LAND"])
-    raise SystemExit("Script stopped. The autopilot is landing on its own; "
-                     "watch it on the Mission Planner map.")
+    if set_mode_confirmed("LAND"):
+        print("  LAND confirmed. The autopilot is landing.")
+    else:
+        print("  !! LAND NOT confirmed. Land manually from Mission Planner (Actions > LAND).")
+    raise SystemExit("Script stopped.")
 
 print("Landed and disarmed. Flight log saved to follow_log.csv")
 

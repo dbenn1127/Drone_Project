@@ -45,12 +45,14 @@ TRAIL_ONLY = False     # True = draw the path only as the drone flies it
 PHASE_COLORS = {
     "climb": "#2a78d6",     # blue
     "pattern": "#eb6834",   # orange
+    "follow": "#eb6834",    # (follow_sim.py's middle phase; same slot)
     "hover": "#eb6834",     # (first_flight.py's middle phase; same slot)
     "land": "#1baf7a",      # aqua
 }
 SURFACE = "#fcfcfb"         # chart background
 INK = "#1a1a19"             # main text
 INK_MUTED = "#6b6a63"       # axis labels, gridlines
+TARGET_COLOR = "#8a4fd6"    # purple: the fake target (follow_sim.py logs only)
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +91,11 @@ else:
     norths = [(float(r["lat_deg"]) - lat0) * meters_per_deg for r in rows]
     easts = [(float(r["lon_deg"]) - lon0) * meters_per_deg * math.cos(math.radians(lat0))
              for r in rows]
+# Target path (follow_sim.py logs only). Its cells are blank outside the
+# follow phase, so keep just the rows that have a target position.
+target_rows = [i for i, r in enumerate(rows) if r.get("target_n", "") != ""]
+target_norths = [float(rows[i]["target_n"]) for i in target_rows]
+target_easts = [float(rows[i]["target_e"]) for i in target_rows]
 
 print(f"Loaded {len(rows)} rows from {LOG_FILE} ({times[-1]:.1f} s of flight)")
 
@@ -113,8 +120,8 @@ for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
 # Fit the axes to the data with a small margin, and keep meters equal in
 # every direction so a square looks square (not stretched).
 pad = 2
-x_lo, x_hi = min(easts) - pad, max(easts) + pad
-y_lo, y_hi = min(norths) - pad, max(norths) + pad
+x_lo, x_hi = min(easts + target_easts) - pad, max(easts + target_easts) + pad
+y_lo, y_hi = min(norths + target_norths) - pad, max(norths + target_norths) + pad
 z_lo, z_hi = 0, max(alts) + pad
 ax.set_xlim(x_lo, x_hi)
 ax.set_ylim(y_lo, y_hi)
@@ -131,7 +138,7 @@ ax.text(easts[0], norths[0], -0.8, "home", color=INK_MUTED, fontsize=8)
 # One line per phase. They start empty and grow as the animation plays.
 # (If TRAIL_ONLY is False, a faint copy of the full path is drawn first,
 # so you can see where the drone is headed.)
-phase_order = [p for p in ["climb", "hover", "pattern", "land"] if p in phases]
+phase_order = [p for p in ["climb", "hover", "pattern", "follow", "land"] if p in phases]
 lines = {}
 for ph in phase_order:
     color = PHASE_COLORS.get(ph, INK_MUTED)
@@ -149,6 +156,15 @@ for ph in phase_order:
 (drone,) = ax.plot([], [], [], marker="o", markersize=9, color=INK,
                    markeredgecolor=SURFACE, markeredgewidth=2, linestyle="")
 (drop_line,) = ax.plot([], [], [], color=INK_MUTED, linewidth=0.8, alpha=0.6)
+
+# Target: its full path on the ground (faint), a moving star, and a sight
+# line from the drone to the target.
+if target_rows:
+    ax.plot(target_easts, target_norths, [0] * len(target_rows),
+            color=TARGET_COLOR, alpha=0.35, linewidth=1.5, label="target path")
+(target_dot,) = ax.plot([], [], [], marker="*", markersize=14, color=TARGET_COLOR,
+                        linestyle="")
+(sight_line,) = ax.plot([], [], [], color=TARGET_COLOR, linewidth=0.8, alpha=0.7)
 
 ax.legend(loc="upper left", frameon=False, labelcolor=INK, fontsize=9)
 
@@ -191,13 +207,26 @@ def update(frame_number):
     drone.set_data_3d([easts[i]], [norths[i]], [alts[i]])
     drop_line.set_data_3d([easts[i], easts[i]], [norths[i], norths[i]], [0, alts[i]])
 
+    # Target star and sight line: only on rows that have a target position.
+    r = rows[i]
+    if r.get("target_n", "") != "":
+        tn, te = float(r["target_n"]), float(r["target_e"])
+        target_dot.set_data_3d([te], [tn], [0])
+        sight_line.set_data_3d([easts[i], te], [norths[i], tn], [alts[i], 0])
+        follow_txt = f"   range {float(r['range_m']):4.1f} m   bearing {float(r['bearing_deg']):+5.1f} deg"
+    else:
+        target_dot.set_data_3d([], [], [])
+        sight_line.set_data_3d([], [], [])
+        follow_txt = ""
+
     readout.set_text(f"t {times[i]:5.1f} s   alt {alts[i]:5.1f} m   "
-                     f"N {norths[i]:6.1f} m   E {easts[i]:6.1f} m   phase: {phases[i]}")
+                     f"N {norths[i]:6.1f} m   E {easts[i]:6.1f} m   phase: {phases[i]}"
+                     + follow_txt)
 
     # Slowly rotate the camera: the viewing angle (azimuth) sweeps from -70
     # to -30 degrees over the replay, which keeps the 3D shape easy to read.
     ax.view_init(elev=25, azim=-70 + 40 * frame_number / len(frame_times))
-    return list(lines.values()) + [shadow, drone, drop_line, readout]
+    return list(lines.values()) + [shadow, drone, drop_line, readout, target_dot, sight_line]
 
 
 anim = FuncAnimation(fig, update, frames=len(frame_times),

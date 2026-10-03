@@ -2,7 +2,7 @@
 
 A vision-based quadcopter that follows a person using its own camera — no phone, beacon, or GPS tag on the person. Built as a systems engineering portfolio project: needs → requirements → architecture → simulation → hardware, with the design captured in a SysML v2 model that lives alongside the code.
 
-**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Follow controller flying in ArduPilot SITL against a simulated walking target: holds 9.5 m at an 8 m standoff (requirement 8 ± 2 m) and never closes inside the 5 m keep-out zone under fault injection. Next: circling-target test and logged test cases.
+**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Follow controller flying in ArduPilot SITL against simulated walking targets: holds 8.8–9.5 m at an 8 m standoff (requirement 8 ± 2 m), keeps a circling target within 4.3° of the nose (requirement ±10°), and never closes inside the 5 m keep-out zone under fault injection. Next: logged re-run of the straight walk, then live camera driving the simulated drone.
 
 ## How it works
 
@@ -41,18 +41,26 @@ Mission scripts fly ArduPilot in software-in-the-loop (SITL) simulation through 
 
 ### Follow controller (in progress)
 
-`follow_sim.py` flies the drone after a simulated target walking at 1.5 m/s. The follow logic commands only horizontal velocity and yaw rate in Guided mode (SAF-2); the test harness plays the pilot for arming, takeoff, and landing. Ctrl+C or any script error switches the vehicle to LAND and waits for confirmation.
+`follow_sim.py` flies the drone after a simulated target. The follow logic commands only horizontal velocity and yaw rate in Guided mode (SAF-2); the test harness plays the pilot for arming, takeoff, and landing. Ctrl+C or any script error switches the vehicle to LAND and waits for confirmation. Test cases are chosen by name (`python follow_sim.py circle`), and every run logs the target position, range, bearing, and the commands sent.
+
+![Follow controller chasing a circling target in ArduPilot SITL](docs/follow_circle_3d.gif)
+
+*Drone (orange) following a simulated person (purple) walking a 10 m circle at 1.5 m/s, replayed from the flight log. The purple line is the drone's line of sight to the target.*
 
 | Test | Result | Requirement |
 |---|---|---|
 | Straight walk, 1.5 m/s, standoff 8 m | Settles at 9.5 m (predicted 9.5 m from proportional-control lag) | CTL-2 (8 ± 2 m): pass |
-| Same run, bearing to target | ≤ 5.2° | CTL-1 (±10°): pass, straight path only |
-| Same run, altitude | Steady; no altitude commands sent | CTL-4: pass |
+| Same run, bearing to target | ≤ 5.2° | CTL-1 (±10°): pass |
+| Circling target, 10 m radius, 1.5 m/s (logged) | Bearing settles at 4.3° (predicted 4.3°); range 8.8 m | CTL-1: pass; CTL-2: pass |
+| Circle run, loop timing from log | 10.0 Hz; largest commands 8.9°/s and 2.1 m/s | CTL-3 (≥ 10 Hz, ≤ 60°/s, ≤ 5 m/s): pass |
+| Both runs, altitude | Steady; no altitude commands sent | CTL-4: pass |
 | Fault injection: standoff set to 3 m (inside keep-out) | Closest approach 6.9 m; 0 of 600 samples inside 5 m | SAF-4: pass |
+
+Each result was predicted before the flight. A proportional controller chasing a moving target settles where its error is just large enough to command the motion needed to keep up: range error = target speed ÷ range gain (1.5 m on the straight walk), and bearing error = turn rate ÷ yaw gain (8.6°/s ÷ 2 = 4.3° on the circle).
 
 The first keep-out design (zero the approach command at 5 m) failed the fault-injection test: momentum carried the drone to 3.2 m. The fix ramps approach speed down in proportion to distance from the 5 m line, so the drone brakes before reaching it.
 
-→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `follow_sim.py` (follow controller), `plot_flight_3d.py` (3D replay)
+→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `follow_sim.py` (follow controller), `plot_flight_3d.py` (3D replay of any flight log, with the target when there is one)
 
 ## Requirements
 
@@ -89,7 +97,7 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 - [ ] Distance estimate from bounding-box height (implemented; tape-measure test pending)
 - [ ] Smooth bearing and distance (moving average, then Kalman filter)
 - [ ] Checkerboard camera calibration
-- [ ] Follow controller in ArduPilot SITL chasing a simulated target (straight-walk and keep-out tests passing; circling test and logging next)
+- [ ] Follow controller in ArduPilot SITL chasing a simulated target (straight, circle, and keep-out tests passing; logged straight re-run next)
 - [ ] Live camera driving the simulated drone
 - [ ] Safety state machine in code (searching, tracking, lost, hover)
 - [ ] Full Gazebo simulation with the camera on the drone

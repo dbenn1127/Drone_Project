@@ -24,8 +24,8 @@ WHAT IT DOES
 HOW TO RUN
     Restart Mission Planner's Multirotor simulation first (fresh position and
     battery every run), then in Anaconda Prompt (yolo environment):
-        cd sim
-        python follow_sim.py              (connects to the simulator)
+        python follow_sim.py              (straight walk, simulator)
+        python follow_sim.py circle       (circling target)
 
 WHO DOES WHAT
     This script plays two roles, and they follow different rules:
@@ -68,7 +68,7 @@ FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full lo
 OUTPUT
     follow_log.csv in this folder (gitignored; regenerated every run): one row
     per position update, with time, position (lat/lon and meters north/east of
-    home), altitude, climb rate, heading, and flight phase.
+    home), altitude, climb rate, heading, and flight phase plus target position, range, bearing, and the yaw and speed commands while following.
 """
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ OUTPUT
 # ---------------------------------------------------------------------------
 import csv    # writes the flight log as a CSV file
 import math   # hypot and atan2 for range and bearing; radians for yaw rate
-import sys    # reads anything typed after the script name (the connection)
+import sys    # reads the test name and optional connection typed after the script name
 import time   # clock and stopwatch functions
 
 from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
@@ -117,6 +117,13 @@ def target_position(t):
     """Fake target: starts 10 m north of home, walks east at 1.5 m/s."""
     return 10.0, 1.5 * t     # (north_m, east_m)
 
+def target_circle(t):
+    """Fake target: circles (20, 0) at 10 m radius, 1.5 m/s, counterclockwise. Starts at (10, 0) heading east."""
+    radius = 10.0
+    speed = 1.5
+    center_n, center_e = 20, 0
+    angle = (speed / radius) * t  # radians since start
+    return center_n - (radius * math.cos(angle)), center_e + (radius * math.sin(angle))   # (north_m, east_m)
 
 # ===========================================================================
 # SECTION 1: CONNECT TO THE DRONE
@@ -126,13 +133,13 @@ def target_position(t):
 
 # Where to connect: whatever you type after the script name, or the
 # simulator if you type nothing.
-#   python follow_sim.py                       -> simulator (default below)
-#   python follow_sim.py udp:127.0.0.1:14550   -> a UDP network link
-CONNECTION = sys.argv[1] if len(sys.argv) > 1 else "tcp:127.0.0.1:5762"
+#   python follow_sim.py circle                         -> simulator (default below)
+#   python follow_sim.py circle udp:127.0.0.1:14550     -> a UDP network link
+CONNECTION = sys.argv[2] if len(sys.argv) > 2 else "tcp:127.0.0.1:5762"
 
 # Serial speed in bits per second. Only matters for radios on COM ports;
 # 57600 is standard for SiK telemetry radios. Ignored for tcp/udp links.
-BAUD = int(sys.argv[2]) if len(sys.argv) > 2 else 57600
+BAUD = int(sys.argv[3]) if len(sys.argv) > 3 else 57600
 
 print(f"Connecting to {CONNECTION} ...")
 
@@ -343,9 +350,23 @@ def go_no_go(min_battery_pct=80, min_satellites=8):
 # Test harness acting as the pilot. Order matters:
 #   check -> human says go -> switch mode -> spin up motors.
 # ===========================================================================
+# ---- Test case selection (before arming, so a typo never flies) ----
+if len(sys.argv) > 1:
+    test_name = sys.argv[1]
+else:
+    test_name = "straight"
+
+if test_name == "straight":
+    target = target_position
+elif test_name == "circle":
+    target = target_circle        
+else:
+    raise SystemExit(f"Unknown test '{test_name}'. Use: straight, circle")
+print(f"  Test case: {test_name}")
+
+print("Running go/no-go checks ...")
 
 # 4a. Mission go/no-go checks. Stop here if anything fails.
-print("Running go/no-go checks ...")
 problems = go_no_go()
 if problems:
     for problem in problems:
@@ -403,7 +424,8 @@ print(f"Taking off to {TARGET_ALT_M} m")
 #   return -> battery failsafe fired; autopilot flying home in RTL
 #             (ends like land: on the ground and disarmed)
 # Each pass through the loop (about 10 per second, set by the position rate):
-#   1. read position   2. log a row   3. print status   4. check for a phase change
+#   1. read position   2. prepare log values   3. print status
+#   4. check for a phase change   5. log a row
 # ===========================================================================
 
 # Abort handlers at the bottom: Ctrl+C (operator abort) or any crash in this
@@ -414,7 +436,9 @@ try:
         log = csv.writer(f)
         log.writerow(["time_s", "t_vehicle_s", "lat_deg", "lon_deg",
                       "north_m", "east_m", "alt_m", "climb_ms", "heading_deg",
-                      "phase"])
+                      "phase",
+                      "target_n", "target_e", "range_m", "bearing_deg",
+                      "yaw_cmd_dps", "speed_cmd_ms"])
         t0 = time.time()   # stopwatch start for the time_s column
 
         # State that carries over from one pass of the loop to the next:
@@ -438,14 +462,14 @@ try:
             alt = p["alt_m"]
             t = round(time.time() - t0, 2)   # seconds since takeoff command (laptop clock)
 
-            # --- 2. Log a row -------------------------------------------------
+            # --- 2. Prepare log values -------------------------------------------------
             # If there's no local position yet, those cells are left blank.
             here = local_position() or (None, None)
             north = round(here[0], 2) if here[0] is not None else ""
             east = round(here[1], 2) if here[1] is not None else ""
-            log.writerow([t, p["t_vehicle_s"], p["lat_deg"], p["lon_deg"],
-                          north, east, round(alt, 2), round(p["climb_ms"], 2),
-                          p["heading_deg"], phase])
+            
+            # Follow-phase values, blank unless the follow branch fills them in below.
+            tn = te = range_m = rel_bearing = yaw_rate = speed = ""
             rows.append((t, alt, p["climb_ms"], phase))
 
             # --- 3. Print status ----------------------------------------------
@@ -485,7 +509,7 @@ try:
 
                 # --- Where is the target? (stands in for the camera estimate) ---
                 t_follow = time.time() - follow_started   # seconds since following began
-                tn, te = target_position(t_follow)        # where the target is now (m north, m east)
+                tn, te = target(t_follow)        # where the target is now (m north, m east)
                 if here[0] is None:
                     continue                              # no local position yet; skip this pass
 
@@ -536,6 +560,12 @@ try:
             elif phase in ("land", "return") and alt < 0.3 and not m.motors_armed():
                 # On the ground and disarmed: the flight is over.
                 break
+            
+            # --- 5. Log a row (last, so it includes this pass's target and commands) ---
+            log.writerow([t, p["t_vehicle_s"], p["lat_deg"], p["lon_deg"],
+                          north, east, round(alt, 2), round(p["climb_ms"], 2),
+                          p["heading_deg"], phase,
+                          tn, te, range_m, rel_bearing, yaw_rate, speed])
 
 except KeyboardInterrupt:
     # Operator pressed Ctrl+C. (KeyboardInterrupt is NOT caught by

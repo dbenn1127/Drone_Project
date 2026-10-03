@@ -67,15 +67,19 @@ v
 
 ## Verification evidence
 
-Preliminary SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Values read from console output; logged runs with 3D replay to follow. Status values stay TBR until logged evidence is recorded.
+SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows marked "logged" come from the flight log's own range, bearing, and command columns; the others were read from console output. Status values stay TBR until the values are confirmed for the final design.
 
 | Date | Requirement | Test | Result | Verdict |
 |---|---|---|---|---|
 | 2026-10-02 | CTL-2 | Target walks straight at 1.5 m/s; standoff 8 m; range gain 0.5 | Settled at 11.0 m | Fail (gain too low) |
 | 2026-10-02 | CTL-2 | Same; range gain 1.0 | Settled at 9.51 m (predicted 9.5 m) | Pass, 0.5 m margin |
-| 2026-10-02 | CTL-1 | Same run, bearing to target | ≤ 5.2° | Pass, straight path only; circling test open |
+| 2026-10-02 | CTL-1 | Same run, bearing to target | ≤ 5.2° | Pass, straight path |
 | 2026-10-02 | CTL-3 | Command limits in code | 5 m/s, 60°/s, 10 Hz loop | Implemented; rate not yet measured |
 | 2026-10-02 | CTL-4 | Same run, altitude | Steady; vz always 0 | Pass |
+| 2026-10-02 | CTL-1 | Target circles 10 m radius at 1.5 m/s (logged) | Bearing settled −4.29° (predicted 4.3°); max 4.47° | Pass |
+| 2026-10-02 | CTL-2 | Same run | Range settled 8.83–8.86 m | Pass |
+| 2026-10-02 | CTL-3 | Same run, loop timing from log | 10.0 Hz mean, longest gap 0.14 s; max commands 8.9°/s, 2.1 m/s | Pass |
+| 2026-10-02 | CTL-4 | Same run, altitude | 9.57–10.04 m | Pass |
 | 2026-10-02 | SAF-4 | Fault injection: standoff 3 m; keep-out v1 (zero approach command inside 5 m) | Closest 3.2 m; 237 of 600 samples inside 5 m | Fail |
 | 2026-10-02 | SAF-4 | Same; keep-out v2 (approach speed ≤ 0.5 × (range − 5)) | Closest 6.86 m; 0 of 600 samples inside 5 m; settled 8.0 m | Pass |
 
@@ -85,7 +89,7 @@ Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), 
 
 - [ ] Resolve PER-1, PER-2 on the bench with the Jetson.
 - [ ] Resolve EST-1 to EST-3 after camera calibration.
-- [ ] Resolve CTL-1 to CTL-3 in SITL. (CTL-2 first pass recorded above; CTL-1 needs a circling target.)
+- [ ] Resolve CTL-1 to CTL-3 in SITL. (First passes recorded above; re-run the straight walk with logging.)
 - [ ] Decide SAF-4 wording: change to the vehicle outcome, e.g. "The vehicle shall remain at least 5 m horizontally from the target, including braking distance."
 - [ ] Resolve SAF-3, SAF-5, SAF-6 in SITL.
 - [ ] Resolve PRF-1 to PRF-3 once hardware is chosen.

@@ -14,6 +14,7 @@ Key design decisions:
 - **The companion only steers.** It commands horizontal velocity and yaw rate in Guided mode. It never arms, takes off, lands, or changes flight mode (SAF-1, SAF-2).
 - **No automatic target switching.** If the target is lost for more than 2 s, the drone hovers and alerts the operator. It never locks onto a different person on its own; only the operator can designate a target (PER-3, SAF-3).
 - **Independent control link.** The pilot's RC link is separate from both the telemetry link and the companion computer (INT-2).
+- **No obstacle avoidance in version 1, by design.** The drone flies only in open areas the operator has checked (SAF-8). Avoidance is a planned upgrade on the flight controller, using a lidar rangefinder and ArduPilot's built-in avoidance.
 
 ## Architecture
 
@@ -64,7 +65,7 @@ The first keep-out design (zero the approach command at 5 m) failed the fault-in
 
 ## Requirements
 
-4 stakeholder needs and 26 system requirements covering perception, estimation, control, safety, interfaces, performance, and FAA regulatory compliance. Each requirement traces to a need and to the part or behavior that satisfies it.
+4 stakeholder needs and 27 system requirements covering perception, estimation, control, safety, interfaces, performance, and FAA regulatory compliance. Each requirement traces to a need and to the part or behavior that satisfies it.
 
 → [Requirements table](docs/requirements.md)
 
@@ -104,6 +105,7 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 - [ ] Perception on the Jetson: measure frame rate and latency
 - [ ] Pan-tilt desk rig: closed-loop camera tracking
 - [ ] Flight hardware: props-off bench test, then open-field flights
+- [ ] Obstacle avoidance (planned upgrade): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first
 
 ## Safety and regulations
 

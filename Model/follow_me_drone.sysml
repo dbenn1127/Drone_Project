@@ -4,8 +4,8 @@
 //      added power distribution, motor chain, GPS, Remote ID, and RF links to the ground.
 //
 // Layout: Requirements -> Interfaces -> Logical -> Behavior -> Physical -> Allocation -> Traceability
-// Values marked TBR are first-pass; 
 // Values marked TBR are first-pass. PER-3 and SAF-2 confirmed 2026-10-01.
+// SAF-8 (open-area operation; no obstacle avoidance in v1) added 2026-10-03.
 
 package FollowMeDrone {
     private import ScalarValues::*;
@@ -106,6 +106,11 @@ package FollowMeDrone {
             }
             requirement <'SAF-7'> emergencyStop {
                 doc /* RC transmitter provides a motor emergency stop switch. */
+            }
+            requirement <'SAF-8'> openAreaOperation {
+                doc /* Operate only in open areas with no obstacles within 15 m horizontally of the
+                       operator's planned route. No obstacle avoidance in version 1; the operator
+                       selects the site and keeps the vehicle in sight. [TBR] */
             }
         }
 
@@ -588,6 +593,7 @@ package FollowMeDrone {
         satisfy Safety::'SAF-5'       by droneSystem.air.avionics.fc;
         satisfy Safety::'SAF-6'       by droneSystem.air.avionics.fc;
         satisfy Safety::'SAF-7'       by droneSystem.ground.rcTx;
+        satisfy Safety::'SAF-8'       by droneSystem;
         satisfy InterfacesPerfReg::'INT-1' by droneSystem.air;
         satisfy InterfacesPerfReg::'INT-2' by droneSystem;
         satisfy InterfacesPerfReg::'INT-3' by droneSystem.ground.gcs;

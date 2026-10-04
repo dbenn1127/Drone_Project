@@ -52,6 +52,7 @@ v
 | SAF-5 | If motion commands stop arriving for more than 3 s, the vehicle stops and holds position. | Test | N-3 | Pixhawk 6C (avionics) | TBR |
 | SAF-6 | Return to launch on RC signal loss, low battery, or geofence breach. Geofence: 150 m radius, 30 m AGL. All failsafes verified before first flight. | Test | N-3 | Pixhawk 6C (avionics) | TBR |
 | SAF-7 | The operator's RC transmitter provides a motor emergency stop switch. | Test | N-2 | RC transmitter (ground) | |
+| SAF-8 | Operate only in open areas with no obstacles within 15 m horizontally of the operator's planned route. Version 1 provides no obstacle avoidance; the operator selects the site and keeps the vehicle in sight. | Inspection | N-3 | Drone system (operating procedure) | TBR |
 
 ## Interfaces, performance, and regulatory
 
@@ -94,3 +95,4 @@ Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), 
 - [ ] Resolve SAF-3, SAF-5, SAF-6 in SITL.
 - [ ] Resolve PRF-1 to PRF-3 once hardware is chosen.
 - [ ] Size the companion regulator (Jetson input voltage from battery).
+- [ ] Obstacle avoidance (planned upgrade, after flight hardware): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first. Would relax SAF-8.

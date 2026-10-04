@@ -12,6 +12,8 @@ WHAT IT DOES
 HOW TO RUN (Anaconda Prompt, from the repo folder)
     python perception\live_track.py
     Click a person to designate them. Press r to clear the target, q to quit.
+    Needs yolo11n.engine in this folder (built per GPU, not in git). Build it once with:
+        yolo export model=yolo11n.pt format=engine device=0 half=True
 
 REQUIREMENTS TRACEABILITY
     Requirement  What this script does                               Status
@@ -21,7 +23,9 @@ REQUIREMENTS TRACEABILITY
                                                                       ID after ~30 frames (~1 s)
     PER-3        Target set ONLY by operator click; no auto-lock      Implemented; second-person test open
                  and no automatic switch to another person
-    PER-4        Frame rate >= 10 Hz                                  Not yet measured
+    PER-4        Frame rate >= 10 Hz                                  Desktop PASS: 30 FPS (camera-limited);
+                                                                      YOLO 7-8 ms CUDA, 3-4 ms TensorRT FP16.
+                                                                      Jetson measurement pending (step 8)
     EST-1        Bearing from box center via pinhole model           Implemented; fx from estimated FOV
     EST-2        Range from box height via pinhole model             Implemented; tape test pending
     SAF-3        Target lost > LOST_TIMEOUT_S -> HOVER + alert        Implemented (display only;
@@ -54,16 +58,23 @@ LOST_TIMEOUT_S = 2.0     # SAF-3: seconds lost before LOST becomes HOVER. [TBR]
 PERSON_HEIGHT_M = 1.88   # EST-2: assumed target height in meters (Derek, 6'2").
                          # Open design question: real system can't know target height.
 
+DEVICE = 0               # Where YOLO runs: 0 = first NVIDIA GPU (the 3090 Ti), "cpu" = processor.
+                         # Set explicitly so a broken GPU setup stops with an error instead of
+                         # silently falling back to the much slower CPU (PER-4: >= 10 Hz).
+yolo_ms_avg = 0.0        # smoothed YOLO inference time in milliseconds
 
 # ---------------------------------------------------------------------------
 # SETUP: model, camera, and state
 # ---------------------------------------------------------------------------
-model = YOLO("yolo11n.pt")       # PER-1: person detector (downloads on first run)
+model = YOLO("yolo11n.engine")   # PER-1: person detector, TensorRT FP16 engine built for this GPU
+                                    # (rebuild with: yolo export model=yolo11n.pt format=engine device=0 half=True)
 cap = cv2.VideoCapture(0)        # Iriun camera; try 1 or 2 if 0 is wrong
 
 target_id = None    # PER-3: track ID of the operator-designated target; None = no target
 lost_since = None   # SAF-3: time the target went missing; None = not lost
 last_boxes = []     # This frame's boxes as (x1, y1, x2, y2, tid), read by on_click
+last_frame_time = time.perf_counter()   # PER-4: when the previous frame arrived
+fps = 0.0                               # PER-4: smoothed loop rate (frames per second)
 
 # Pinhole camera model (EST-1, EST-2).
 #   cx = image center column in pixels (where bearing = 0)
@@ -103,10 +114,17 @@ while True:
     if not ok:
         break
 
+    # PER-4: loop rate. dt = seconds since the previous frame.
+    now = time.perf_counter()
+    dt = now - last_frame_time
+    last_frame_time = now
+    if dt > 0:
+        # Smoothed: each new reading moves the display 10% of the way (moving average).
+        fps = 0.9 * fps + 0.1 * (1/dt)
     # Detect and track people (PER-1, PER-2). classes=[0] keeps only "person".
     # persist=True keeps ByteTrack's IDs from frame to frame.
     results = model.track(frame, persist=True, tracker="bytetrack.yaml",
-                          classes=[0], verbose=False)
+                          classes=[0], device=DEVICE, verbose=False)
     boxes = results[0].boxes
     found = False          # becomes True if the designated target is seen this frame
     last_boxes.clear()     # start fresh each frame
@@ -163,6 +181,13 @@ while True:
             cv2.putText(frame, "Hover - click to redesignate", (30, 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
+    # PER-4 readout: loop rate and YOLO's own time per frame, bottom-left corner.
+    yolo_ms = results[0].speed["inference"]
+    yolo_ms_avg = 0.9 * yolo_ms_avg + 0.1 * yolo_ms   # smoothed
+    cv2.putText(frame, f"{fps:4.1f} FPS   YOLO {yolo_ms_avg:4.1f} ms",
+                (30, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                (255, 255, 255), 2)
+    
     cv2.imshow("Follow-me perception", frame)
 
     # Keyboard: q = quit, r = operator clears the target (an operator action,

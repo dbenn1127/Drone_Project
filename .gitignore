@@ -7,3 +7,5 @@ venv/
 *.bin
 sim/*.csv
 sim/*.gif
+*.engine
+*.onnx

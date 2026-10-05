@@ -1,4 +1,6 @@
-   pymavlink
-   matplotlib
-   ultralytics
-   opencv-python
+# GPU (NVIDIA): after installing these, replace torch with the CUDA build and add TensorRT.
+# See the "GPU setup" steps in README.md.
+pymavlink
+matplotlib
+ultralytics
+opencv-python

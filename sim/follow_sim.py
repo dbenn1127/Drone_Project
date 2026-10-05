@@ -8,8 +8,8 @@ Built in stages:
     a. Fake target + range/bearing printout, drone hovering   [done]
     b. Yaw control: turn to face the target                   [done]
     c. Forward speed: hold the standoff distance              [done]
-    d. Limits, keep-out zone, gain tuning                     [mostly done; circling test open]
-    e. Test cases by name, target logging, 3D replay          <- next
+    d. Limits, keep-out zone, gain tuning                     [done]
+    e. Test cases by name, target logging, 3D replay          [done]
 
 Built from pattern_flight.py (sections 1-5 are the same harness).
 
@@ -44,7 +44,7 @@ CONTROL LAW (one pass, 10 Hz)
     velocity = speed along the line to the target (split into north/east)
 
 REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
-    CTL-1  Keep target within +/-10 deg of centerline       PASS (straight walk); circling test open
+    CTL-1  Keep target within +/-10 deg of centerline       PASS: straight 5.2° max then 0°; circle 4.3° steady
     CTL-2  Hold 8 m standoff within +/-2 m                  PASS: 9.5 m (0.5 m margin)
     CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60 deg/s   implemented (mask, clamps, 10 Hz loop)
     CTL-4  No altitude commands                             PASS: vz always 0; altitude 9.6-10.0 m
@@ -86,7 +86,7 @@ from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
 # FLIGHT SETTINGS
 # ALL_CAPS names are a Python convention for "set once, don't change later."
 # ---------------------------------------------------------------------------
-TARGET_ALT_M = 10       # flight altitude, meters above home (CTL-4: held, never changed)
+TARGET_ALT_M = 6.0       # flight altitude, meters above home (CTL-4: held, never changed)
 FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
 
 # Follow controller

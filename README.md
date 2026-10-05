@@ -1,32 +1,25 @@
 # Follow-Me Drone
 
-A vision-based quadcopter that follows a person using its own camera — no phone, beacon, or GPS tag on the person. Built as a systems engineering portfolio project: needs → requirements → architecture → simulation → hardware, with the design captured in a SysML v2 model that lives alongside the code.
+A quadcopter that follows a person using only its own camera. The person doesn't carry a phone, beacon, or GPS tag.
 
-**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending), running on an NVIDIA GPU with a TensorRT engine at 3–4 ms per frame. Follow controller flying in ArduPilot SITL against simulated walking targets: holds 8.8–9.5 m at an 8 m standoff (requirement 8 ± 2 m), keeps a circling target within 4.3° of the nose (requirement ±10°), and never closes inside the 5 m keep-out zone under fault injection. Next: logged re-run of the straight walk, then live camera driving the simulated drone.
+I'm building it as a systems engineering project: needs and requirements first, then architecture, simulation, and hardware last. The design lives in a SysML v2 model next to the code, and every test result traces back to a requirement.
+
+**Where it stands:** the camera code picks out and tracks a person on live video, running on an NVIDIA GPU. The follow controller flies a simulated drone after a simulated walker and meets its distance, heading, and keep-out requirements. Next, the live camera drives the simulated drone.
 
 ## How it works
 
-A Jetson Orin Nano companion computer runs person detection and tracking on the camera feed, estimates bearing and range to the operator-designated target, and sends velocity and yaw-rate commands to a Pixhawk 6C running ArduPilot over MAVLink. The flight controller keeps every flight-critical function: stabilization, navigation, failsafes, and geofence. If the vision software stalls, the aircraft holds position and the pilot still has full control.
+A Jetson Orin Nano runs the camera code. It finds the person the operator picked, works out their direction and distance, and tells the flight controller (a Pixhawk 6C running ArduPilot) how fast to fly and turn.
 
-Key design decisions:
+A few rules shape the design:
 
-- **Flight-critical vs. non-critical split.** Vision and follow logic run on the companion computer, which has no real-time guarantees. Everything the aircraft needs to stay safe runs on the flight controller.
-- **The companion only steers.** It commands horizontal velocity and yaw rate in Guided mode. It never arms, takes off, lands, or changes flight mode (SAF-1, SAF-2).
-- **No automatic target switching.** If the target is lost for more than 2 s, the drone hovers and alerts the operator. It never locks onto a different person on its own; only the operator can designate a target (PER-3, SAF-3).
-- **Independent control link.** The pilot's RC link is separate from both the telemetry link and the companion computer (INT-2).
-- **No obstacle avoidance in version 1, by design.** The drone flies only in open areas the operator has checked (SAF-8). Avoidance is a planned upgrade on the flight controller, using a lidar rangefinder and ArduPilot's built-in avoidance.
-
-## Architecture
-
-**System context:** air vehicle and ground segment, with the independent RC control link and 915 MHz telemetry link.
+- **The flight controller owns safety.** Stabilization, failsafes, and the geofence all run on the Pixhawk. If the Jetson crashes, the drone holds position and the pilot keeps full control.
+- **The Jetson only steers.** It never arms, takes off, lands, or changes flight mode. Those stay with the pilot.
+- **It never picks a new person on its own.** If it loses the target for 2 seconds, it hovers and waits for the operator.
+- **No obstacle avoidance yet.** Version 1 flies only in open areas. Avoidance is a planned upgrade.
 
 ![System context](docs/systemContext.png)
 
-**Air vehicle interconnection:** subsystems (avionics, autonomy payload, power, propulsion) and the interfaces between them.
-
 ![Air vehicle interconnection](docs/airVehicleInterconnection.png)
-
-**Follow-mode behavior:** the companion's state machine. Leaving Guided mode from any state returns control to the pilot immediately.
 
 ![Follow-mode state machine](docs/followModeStates.png)
 
@@ -34,18 +27,20 @@ More diagrams are in [`docs/`](docs/).
 
 ## Perception
 
-`perception/live_track.py` runs YOLO11n person detection and ByteTrack tracking on live video. The operator clicks a person to designate the target; the script then estimates bearing from the box center and range from the box height. If the target disappears it shows LOST, then HOVER after 2 s, and it never switches to another person on its own (PER-3, SAF-3).
+[`perception/live_track.py`](perception/live_track.py) finds people with YOLO11n and tracks them with ByteTrack. You click the person to follow. It estimates their direction from where they are in the frame and their distance from how tall they look.
 
-Detection runs on an NVIDIA GPU, first through CUDA and then as a TensorRT FP16 engine, the same deployment path planned for the Jetson. Measured on the development desktop (RTX 3090 Ti):
+It runs on my RTX 3090 Ti, first with CUDA and then as a TensorRT engine, which is the same path planned for the Jetson:
 
-| Configuration | YOLO time per frame | Detector capacity | Loop rate |
-|---|---|---|---|
-| PyTorch on GPU (CUDA) | 7–8 ms | ~130 frames/s | 30 FPS (camera-limited) |
-| TensorRT FP16 engine | 3–4 ms | ~285 frames/s | 30 FPS (camera-limited) |
+| Setup | Detection time per frame |
+|---|---|
+| CUDA | 7–8 ms |
+| TensorRT (FP16) | 3–4 ms |
 
-The loop rate is set by the camera, not the detector, so the desktop passes PER-4 (≥ 10 Hz) with a wide margin. The Jetson Orin Nano is the real test; the TensorRT speedup carries over and leaves room for other work on the same computer.
+Either way the camera is the limit at 30 frames per second, well above the 10 required. The real test is the Jetson.
 
-**GPU setup** (Windows, conda environment):
+<details>
+<summary>GPU setup (Windows, conda)</summary>
+
 ```
 pip install -r requirements.txt
 pip uninstall -y torch torchvision
@@ -55,85 +50,70 @@ cd perception
 yolo export model=yolo11n.pt format=engine device=0 half=True
 python live_track.py
 ```
-The PyTorch build must match your NVIDIA driver's CUDA version (`nvidia-smi` shows it). The `.engine` file is built for one specific GPU, so it is not kept in git; rebuild it on each machine.
+
+Match the PyTorch build to your driver's CUDA version (`nvidia-smi` shows it). The `.engine` file only works on the GPU that built it, so it isn't in git.
+
+</details>
 
 ## Simulation
 
-Mission scripts fly ArduPilot in software-in-the-loop (SITL) simulation through Mission Planner, using pymavlink. They run go/no-go checks (battery, GPS), require operator confirmation before arming, log telemetry to CSV, and include script-side failsafes (low battery, waypoint timeout, operator abort), with ArduPilot's own failsafes underneath.
-
-![Scripted waypoint flight in ArduPilot SITL, replayed from logged telemetry](docs/flight_3d.gif)
-
-*Scripted 20 m square at 10 m altitude in ArduPilot SITL, replayed in 3D from the flight log.*
-
-### Follow controller (in progress)
-
-`follow_sim.py` flies the drone after a simulated target. The follow logic commands only horizontal velocity and yaw rate in Guided mode (SAF-2); the test harness plays the pilot for arming, takeoff, and landing. Ctrl+C or any script error switches the vehicle to LAND and waits for confirmation. Test cases are chosen by name (`python follow_sim.py circle`), and every run logs the target position, range, bearing, and the commands sent.
+The flight scripts fly ArduPilot's simulator through Mission Planner. They run pre-flight checks, wait for me to confirm before arming, log every flight, and land the drone if anything goes wrong.
 
 ![Follow controller chasing a circling target in ArduPilot SITL](docs/follow_circle_3d.gif)
 
-*Drone (orange) following a simulated person (purple) walking a 10 m circle at 1.5 m/s, replayed from the flight log. The purple line is the drone's line of sight to the target.*
+*The drone (orange) follows a simulated person (purple) walking a 10 m circle, replayed from the flight log.*
 
-| Test | Result | Requirement |
-|---|---|---|
-| Straight walk, 1.5 m/s, standoff 8 m | Settles at 9.5 m (predicted 9.5 m from proportional-control lag) | CTL-2 (8 ± 2 m): pass |
-| Same run, bearing to target | ≤ 5.2° | CTL-1 (±10°): pass |
-| Circling target, 10 m radius, 1.5 m/s (logged) | Bearing settles at 4.3° (predicted 4.3°); range 8.8 m | CTL-1: pass; CTL-2: pass |
-| Circle run, loop timing from log | 10.0 Hz; largest commands 8.9°/s and 2.1 m/s | CTL-3 (≥ 10 Hz, ≤ 60°/s, ≤ 5 m/s): pass |
-| Both runs, altitude | Steady; no altitude commands sent | CTL-4: pass |
-| Fault injection: standoff set to 3 m (inside keep-out) | Closest approach 6.9 m; 0 of 600 samples inside 5 m | SAF-4: pass |
+[`sim/follow_sim.py`](sim/follow_sim.py) flies the drone after a simulated walker, 8 m behind at 6 m altitude. I predicted each result before flying it:
 
-Each result was predicted before the flight. A proportional controller chasing a moving target settles where its error is just large enough to command the motion needed to keep up: range error = target speed ÷ range gain (1.5 m on the straight walk), and bearing error = turn rate ÷ yaw gain (8.6°/s ÷ 2 = 4.3° on the circle).
+| Test | Predicted | Measured | Requirement |
+|---|---|---|---|
+| Straight walk: distance | 9.5 m | 9.5 m | 8 ± 2 m ✓ |
+| Circle: heading error | 4.3° | 4.3° | within 10° ✓ |
+| Fault injection: told to fly at 3 m | stays out of 5 m | closest 6.9 m | never inside 5 m ✓ |
 
-The first keep-out design (zero the approach command at 5 m) failed the fault-injection test: momentum carried the drone to 3.2 m. The fix ramps approach speed down in proportion to distance from the 5 m line, so the drone brakes before reaching it.
+The predictions come from how a simple proportional controller behaves. Chasing something that keeps moving, it settles at whatever error is just big enough to keep up, so the error equals the speed needed divided by the gain.
 
-→ [`sim/`](sim/): `first_flight.py` (takeoff, hover, land), `pattern_flight.py` (waypoint pattern with failsafes), `follow_sim.py` (follow controller), `plot_flight_3d.py` (3D replay of any flight log, with the target when there is one)
+My first keep-out design failed its test. It stopped pushing toward the person at 5 m, but momentum carried the drone in to 3.2 m. The fix slows the approach gradually so the drone is already braking when it reaches the line.
 
-## Requirements
+![Scripted waypoint flight in ArduPilot SITL](docs/flight_3d.gif)
 
-4 stakeholder needs and 27 system requirements covering perception, estimation, control, safety, interfaces, performance, and FAA regulatory compliance. Each requirement traces to a need and to the part or behavior that satisfies it.
+*An earlier scripted flight: a 20 m square, replayed from the log.*
 
-→ [Requirements table](docs/requirements.md)
+## Requirements and model
 
-## Model
-
-The architecture is modeled in SysML v2 textual notation:
-
-- [`Model/follow_me_drone.sysml`](Model/follow_me_drone.sysml) — requirements, interfaces, logical architecture, behavior, physical architecture, allocation, and traceability
-- [`Model/views.sysml`](Model/views.sysml) — diagram view definitions
-
-Edited and validated in VS Code with [Spec42](https://marketplace.visualstudio.com/items?itemName=Elan8.spec42); diagrams are generated from the model.
+- [Requirements table](docs/requirements.md): 4 needs, 27 requirements, and the test evidence so far
+- [`Model/follow_me_drone.sysml`](Model/follow_me_drone.sysml): the SysML v2 model (requirements, interfaces, architecture, behavior, traceability), edited in VS Code with [Spec42](https://marketplace.visualstudio.com/items?itemName=Elan8.spec42)
 
 ## Hardware
 
-| Function | Component |
+| Part | Choice |
 |---|---|
 | Flight controller | Holybro Pixhawk 6C, ArduPilot |
-| Companion computer | NVIDIA Jetson Orin Nano Super (8 GB) |
-| Camera | Arducam IMX219, CSI |
-| Companion link | MAVLink 2 over serial (TELEM2) |
-| Telemetry | 915 MHz SiK radio pair |
-| RC link | ExpressLRS |
+| Companion computer | NVIDIA Jetson Orin Nano Super |
+| Camera | Arducam IMX219 |
+| Telemetry | 915 MHz radio pair |
+| RC | ExpressLRS |
 
-Frame, propulsion, and battery will be sized once the payload weight is known.
+Frame, motors, and battery get sized once I know the payload weight.
 
 ## Roadmap
 
-- [x] Bearing to target: live YOLO + ByteTrack on video
-- [x] Scripted SITL flights: takeoff/land and waypoint pattern with failsafes
-- [x] Perception on an NVIDIA GPU: CUDA, then TensorRT FP16 engine (YOLO 7–8 ms → 3–4 ms per frame)
-- [ ] Distance estimate from bounding-box height (implemented; tape-measure test pending)
-- [ ] Smooth bearing and distance (moving average, then Kalman filter)
-- [ ] Checkerboard camera calibration
-- [ ] Follow controller in ArduPilot SITL chasing a simulated target (straight, circle, and keep-out tests passing; logged straight re-run next)
-- [ ] Live camera driving the simulated drone
-- [ ] Safety state machine in code (searching, tracking, lost, hover)
-- [ ] Full Gazebo simulation with the camera on the drone
-- [ ] Perception on the Jetson: TensorRT engine, then DeepStream; measure frame rate and latency
-- [ ] Pan-tilt desk rig: closed-loop camera tracking
-- [ ] Flight hardware: props-off bench test, then open-field flights
-- [ ] Obstacle avoidance (planned upgrade): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first
-- [ ] GPS-denied navigation (version 2): visual SLAM on the Jetson (NVIDIA Isaac ROS Visual SLAM under ROS 2) with a stereo depth camera, feeding ArduPilot's non-GPS navigation; developed in Gazebo first
+- [x] Track a person and find their direction on live video
+- [x] Scripted flights in the simulator, with failsafes
+- [x] Run detection on an NVIDIA GPU with TensorRT
+- [x] Follow controller in the simulator, with logged tests
+- [ ] Check the distance estimate with a tape measure
+- [ ] Smooth the direction and distance readings
+- [ ] Calibrate the camera
+- [ ] Live camera drives the simulated drone
+- [ ] Safety state machine in code
+- [ ] Gazebo simulation with the camera on the drone
+- [ ] Move perception to the Jetson and measure speed
+- [ ] Pan-tilt desk rig
+- [ ] Build and fly the real drone
+- [ ] Later: obstacle avoidance with a lidar rangefinder
+- [ ] Later: flying without GPS, using visual SLAM on the Jetson
 
 ## Safety and regulations
 
-Flown under FAA recreational rules: registered, Remote ID compliant, TRUST certificate, visual line of sight, at or below 400 ft, with LAANC authorization where required. All failsafes are verified in simulation before first flight.
+Flown under FAA recreational rules: registered, Remote ID, TRUST certificate, within line of sight, under 400 ft. Every failsafe gets tested in simulation before the first real flight.

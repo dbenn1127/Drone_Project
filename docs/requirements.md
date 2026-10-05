@@ -81,6 +81,7 @@ SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows
 | 2026-10-02 | CTL-2 | Same run | Range settled 8.83–8.86 m | Pass |
 | 2026-10-02 | CTL-3 | Same run, loop timing from log | 10.0 Hz mean, longest gap 0.14 s; max commands 8.9°/s, 2.1 m/s | Pass |
 | 2026-10-02 | CTL-4 | Same run, altitude | 9.57–10.04 m | Pass |
+| 2026-10-03 | PER-4 | `live_track.py` on desktop GPU (RTX 3090 Ti), live camera | 30 FPS loop (camera-limited); YOLO 7–8 ms (CUDA), 3–4 ms (TensorRT FP16) | Pass on desktop; Jetson measurement pending |
 | 2026-10-02 | SAF-4 | Fault injection: standoff 3 m; keep-out v1 (zero approach command inside 5 m) | Closest 3.2 m; 237 of 600 samples inside 5 m | Fail |
 | 2026-10-02 | SAF-4 | Same; keep-out v2 (approach speed ≤ 0.5 × (range − 5)) | Closest 6.86 m; 0 of 600 samples inside 5 m; settled 8.0 m | Pass |
 
@@ -96,3 +97,4 @@ Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), 
 - [ ] Resolve PRF-1 to PRF-3 once hardware is chosen.
 - [ ] Size the companion regulator (Jetson input voltage from battery).
 - [ ] Obstacle avoidance (planned upgrade, after flight hardware): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first. Would relax SAF-8.
+- [ ] GPS-denied navigation (version 2): would add a stakeholder need (e.g. N-5, "operate when GPS is unavailable") and its own requirements (position accuracy, drift, compute budget shared with perception). Visual SLAM on the Jetson with a stereo depth camera, feeding ArduPilot as an external position source.

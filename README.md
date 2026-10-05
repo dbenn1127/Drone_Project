@@ -2,7 +2,7 @@
 
 A vision-based quadcopter that follows a person using its own camera — no phone, beacon, or GPS tag on the person. Built as a systems engineering portfolio project: needs → requirements → architecture → simulation → hardware, with the design captured in a SysML v2 model that lives alongside the code.
 
-**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending). Follow controller flying in ArduPilot SITL against simulated walking targets: holds 8.8–9.5 m at an 8 m standoff (requirement 8 ± 2 m), keeps a circling target within 4.3° of the nose (requirement ±10°), and never closes inside the 5 m keep-out zone under fault injection. Next: logged re-run of the straight walk, then live camera driving the simulated drone.
+**Status:** Architecture baselined. Perception working on live video: operator designation, bearing, and range (accuracy verification pending), running on an NVIDIA GPU with a TensorRT engine at 3–4 ms per frame. Follow controller flying in ArduPilot SITL against simulated walking targets: holds 8.8–9.5 m at an 8 m standoff (requirement 8 ± 2 m), keeps a circling target within 4.3° of the nose (requirement ±10°), and never closes inside the 5 m keep-out zone under fault injection. Next: logged re-run of the straight walk, then live camera driving the simulated drone.
 
 ## How it works
 
@@ -31,6 +31,31 @@ Key design decisions:
 ![Follow-mode state machine](docs/followModeStates.png)
 
 More diagrams are in [`docs/`](docs/).
+
+## Perception
+
+`perception/live_track.py` runs YOLO11n person detection and ByteTrack tracking on live video. The operator clicks a person to designate the target; the script then estimates bearing from the box center and range from the box height. If the target disappears it shows LOST, then HOVER after 2 s, and it never switches to another person on its own (PER-3, SAF-3).
+
+Detection runs on an NVIDIA GPU, first through CUDA and then as a TensorRT FP16 engine, the same deployment path planned for the Jetson. Measured on the development desktop (RTX 3090 Ti):
+
+| Configuration | YOLO time per frame | Detector capacity | Loop rate |
+|---|---|---|---|
+| PyTorch on GPU (CUDA) | 7–8 ms | ~130 frames/s | 30 FPS (camera-limited) |
+| TensorRT FP16 engine | 3–4 ms | ~285 frames/s | 30 FPS (camera-limited) |
+
+The loop rate is set by the camera, not the detector, so the desktop passes PER-4 (≥ 10 Hz) with a wide margin. The Jetson Orin Nano is the real test; the TensorRT speedup carries over and leaves room for other work on the same computer.
+
+**GPU setup** (Windows, conda environment):
+```
+pip install -r requirements.txt
+pip uninstall -y torch torchvision
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+pip install tensorrt-cu13
+cd perception
+yolo export model=yolo11n.pt format=engine device=0 half=True
+python live_track.py
+```
+The PyTorch build must match your NVIDIA driver's CUDA version (`nvidia-smi` shows it). The `.engine` file is built for one specific GPU, so it is not kept in git; rebuild it on each machine.
 
 ## Simulation
 
@@ -95,6 +120,7 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 
 - [x] Bearing to target: live YOLO + ByteTrack on video
 - [x] Scripted SITL flights: takeoff/land and waypoint pattern with failsafes
+- [x] Perception on an NVIDIA GPU: CUDA, then TensorRT FP16 engine (YOLO 7–8 ms → 3–4 ms per frame)
 - [ ] Distance estimate from bounding-box height (implemented; tape-measure test pending)
 - [ ] Smooth bearing and distance (moving average, then Kalman filter)
 - [ ] Checkerboard camera calibration
@@ -102,10 +128,11 @@ Frame, propulsion, and battery will be sized once the payload weight is known.
 - [ ] Live camera driving the simulated drone
 - [ ] Safety state machine in code (searching, tracking, lost, hover)
 - [ ] Full Gazebo simulation with the camera on the drone
-- [ ] Perception on the Jetson: measure frame rate and latency
+- [ ] Perception on the Jetson: TensorRT engine, then DeepStream; measure frame rate and latency
 - [ ] Pan-tilt desk rig: closed-loop camera tracking
 - [ ] Flight hardware: props-off bench test, then open-field flights
 - [ ] Obstacle avoidance (planned upgrade): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first
+- [ ] GPS-denied navigation (version 2): visual SLAM on the Jetson (NVIDIA Isaac ROS Visual SLAM under ROS 2) with a stereo depth camera, feeding ArduPilot's non-GPS navigation; developed in Gazebo first
 
 ## Safety and regulations
 

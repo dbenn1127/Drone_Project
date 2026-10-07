@@ -422,6 +422,8 @@ print(f"Taking off to {TARGET_ALT_M} m")
 #   follow -> (FOLLOW_SECONDS elapsed)              -> land
 #   land   -> (on the ground and disarmed)          -> done
 #   return -> battery failsafe fired; autopilot flying home in RTL
+#   idle   -> mode left GUIDED during follow (pilot or autopilot failsafe, SAF-1);
+#             script sends nothing more (ends like land: on the ground and disarmed)
 #             (ends like land: on the ground and disarmed)
 # Each pass through the loop (about 10 per second, set by the position rate):
 #   1. read position   2. prepare log values   3. print status
@@ -498,6 +500,14 @@ try:
                 phase = "follow"
                 follow_started = time.time()     # the fake target's clock starts now
                 print(f"  >> {t:6.1f} s  phase climb -> follow")
+            
+            elif phase == "follow" and m.flightmode != "GUIDED":
+                # The autopilot is no longer in GUIDED, so the follow logic can't run.
+                # This can happen if the operator switches to another mode (e.g. RTL)
+                # or if a failsafe fires (e.g. low battery). Either way, the follow
+                # phase is over.
+                phase = "idle"
+                print(f"  >> {t:6.1f} s  phase follow -> {phase} (autopilot switched to {m.flightmode})")
 
             elif phase == "follow":
                 # Battery failsafe. "0 <=" skips the check if battery reads -1 (unknown).
@@ -557,7 +567,7 @@ try:
                     else:
                         print(f"  !! {t:6.1f} s  LAND NOT confirmed; retrying. Land manually if this repeats.")
 
-            elif phase in ("land", "return") and alt < 0.3 and not m.motors_armed():
+            elif phase in ("land", "return", "idle") and alt < 0.3 and not m.motors_armed():
                 # On the ground and disarmed: the flight is over.
                 break
             

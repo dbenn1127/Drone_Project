@@ -85,6 +85,8 @@ SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows
 | 2026-10-05 | CTL-1 | Same run | Max 5.24° while catching up; settled 0.0° | Pass |
 | 2026-10-05 | CTL-3 | Same run | 10.0 Hz, longest gap 0.13 s; max commands 10.5°/s, 2.0 m/s | Pass |
 | 2026-10-05 | CTL-4 | Same run | 5.76–6.06 m at a 6 m setting | Pass |
+| 2026-10-06 | SAF-1 | Mid-follow, operator switches to BRAKE in Mission Planner (logged) | Commands stop on the same 10 Hz pass (last command 11.24 s, idle from 11.33 s); 0 commands afterward; script makes no mode change | Pass |
+| 2026-10-06 | SAF-1 | Same run: operator keeps control past the end-of-test time | Hovered at 6.07 m through the 60 s follow mark with no forced LAND; operator then chose RTL; script ended at disarm | Pass |
 | 2026-10-03 | PER-4 | `live_track.py` on desktop GPU (RTX 3090 Ti), live camera | 30 FPS loop (camera-limited); YOLO 7–8 ms (CUDA), 3–4 ms (TensorRT FP16) | Pass on desktop; Jetson measurement pending |
 | 2026-10-02 | SAF-4 | Fault injection: standoff 3 m; keep-out v1 (zero approach command inside 5 m) | Closest 3.2 m; 237 of 600 samples inside 5 m | Fail |
 | 2026-10-02 | SAF-4 | Same; keep-out v2 (approach speed ≤ 0.5 × (range − 5)) | Closest 6.86 m; 0 of 600 samples inside 5 m; settled 8.0 m | Pass |
@@ -98,6 +100,7 @@ Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), 
 - [ ] Confirm CTL-1 to CTL-4 on hardware. (SITL evidence complete: straight and circle runs, logged, recorded above.)
 - [ ] Decide SAF-4 wording: change to the vehicle outcome, e.g. "The vehicle shall remain at least 5 m horizontally from the target, including braking distance."
 - [ ] Resolve SAF-3, SAF-5, SAF-6 in SITL.
+- [ ] Hand-back after a takeover: re-entering Guided should go to searching and wait for operator designation (model transition idle → searching). Today the script stays idle.
 - [ ] Resolve PRF-1 to PRF-3 once hardware is chosen.
 - [ ] Size the companion regulator (Jetson input voltage from battery).
 - [ ] Obstacle avoidance (planned upgrade, after flight hardware): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first. Would relax SAF-8.

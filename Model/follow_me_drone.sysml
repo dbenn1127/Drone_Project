@@ -95,7 +95,8 @@ package FollowMeDrone {
                 doc /* If target lost > 2 s, command zero velocity (hover) and alert operator via GCS. [TBR] */
             }
             requirement <'SAF-4'> keepOutZone {
-                doc /* Never command motion within 5 m horizontally of the target; never fly directly over people. */
+                                  doc /* The vehicle shall remain at least 5 m horizontally from the target, 
+                                  including braking distance, and shall not fly directly over people. (Reworded 2026-10-07.) */
             }
             requirement <'SAF-5'> commandTimeout {
                 doc /* If motion commands stop for > 3 s, vehicle stops and holds position. [TBR] */

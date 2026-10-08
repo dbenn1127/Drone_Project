@@ -22,7 +22,7 @@ Pending = design decision awaiting confirmation.
 | PER-2 | Maintain the designated target's identity through viewpoint changes (front, side, rear) and occlusions of up to 1.0 s. | Test | N-1 | Jetson (autonomy) | TBR |
 | PER-3 | Acquire a target only by operator designation; do not transfer to a different person during flight without operator action. | Simulation | N-1, N-2 | Follow-mode state machine | Confirmed |
 | PER-4 | Process frames for detection and tracking at no less than 10 Hz on the companion computer. | Test | N-1 | Jetson (autonomy) | |
-v
+
 ## Estimation
 
 | ID | Requirement | Verify | Traces to | Satisfied by | Status |
@@ -48,7 +48,7 @@ v
 | SAF-1 | The companion sends motion commands only while the vehicle is in Guided mode; an operator mode change out of Guided returns full control immediately. | Test | N-2 | Follow-mode state machine | |
 | SAF-2 | The companion shall not arm, take off, land, or change flight mode; these are reserved for the operator. | Inspection | N-2 | Follow-mode state machine | Confirmed |
 | SAF-3 | If the target is lost for more than 2 s, command zero velocity (hover) and alert the operator via the GCS. | Simulation | N-3 | Follow-mode state machine | TBR |
-| SAF-4 | The vehicle shall remain at least 5m horizontally from the target, including braking distance. | Simulation | N-3 | Jetson (autonomy) | |
+| SAF-4 | The vehicle shall remain at least 5 m horizontally from the target, including braking distance, and shall not fly directly over people. | Simulation | N-3 | Jetson (autonomy) | |
 | SAF-5 | If motion commands stop arriving for more than 3 s, the vehicle stops and holds position. | Test | N-3 | Pixhawk 6C (avionics) | TBR |
 | SAF-6 | Return to launch on RC signal loss, low battery, or geofence breach. Geofence: 150 m radius, 30 m AGL. All failsafes verified before first flight. | Test | N-3 | Pixhawk 6C (avionics) | TBR |
 | SAF-7 | The operator's RC transmitter provides a motor emergency stop switch. | Test | N-2 | RC transmitter (ground) | |
@@ -90,17 +90,19 @@ SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows
 | 2026-10-03 | PER-4 | `live_track.py` on desktop GPU (RTX 3090 Ti), live camera | 30 FPS loop (camera-limited); YOLO 7–8 ms (CUDA), 3–4 ms (TensorRT FP16) | Pass on desktop; Jetson measurement pending |
 | 2026-10-02 | SAF-4 | Fault injection: standoff 3 m; keep-out v1 (zero approach command inside 5 m) | Closest 3.2 m; 237 of 600 samples inside 5 m | Fail |
 | 2026-10-02 | SAF-4 | Same; keep-out v2 (approach speed ≤ 0.5 × (range − 5)) | Closest 6.86 m; 0 of 600 samples inside 5 m; settled 8.0 m | Pass |
+| 2026-10-07 | SAF-1 | Hand-back: BRAKE at 11.6 s, back to GUIDED at 34.5 s (logged) | idle → searching → follow after 3.1 s (RESUME_DELAY_S = 3); 0 commands in idle or searching; target clock kept running; end-of-test timer restarted on resume (LAND 60.0 s after resume) | Pass |
+| 2026-10-07 | — | Same run: catch-up after hand-back | Range 46.6 m at resume; speed command at the 5.0 m/s cap for ~10 s; settled at ~9.5 m by 51 s | Finding: lunge; soft start next |
 
-Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), but v1 met that wording and still let the vehicle reach 3.2 m. Proposed rewording to the vehicle outcome is listed under open items.
+Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), but v1 met that wording and still let the vehicle reach 3.2 m. SAF-4 was reworded on 2026-10-07 to state the vehicle outcome.
 
 ## Open items
 
 - [ ] Resolve PER-1, PER-2 on the bench with the Jetson.
 - [ ] Resolve EST-1 to EST-3 after camera calibration.
 - [ ] Confirm CTL-1 to CTL-4 on hardware. (SITL evidence complete: straight and circle runs, logged, recorded above.)
-- [ ] Decide SAF-4 wording: change to the vehicle outcome, e.g. "The vehicle shall remain at least 5 m horizontally from the target, including braking distance."
+- [x] Decide SAF-4 wording: change to the vehicle outcome, e.g. "The vehicle shall remain at least 5 m horizontally from the target, including braking distance."
 - [ ] Resolve SAF-3, SAF-5, SAF-6 in SITL.
-- [ ] Hand-back after a takeover: re-entering Guided should go to searching and wait for operator designation (model transition idle → searching). Today the script stays idle.
+- [x] Hand-back after a takeover: re-entering Guided goes to searching, then follow after RESUME_DELAY_S (sim stand-in for operator re-designation). Done 2026-10-07.
 - [ ] Resolve PRF-1 to PRF-3 once hardware is chosen.
 - [ ] Size the companion regulator (Jetson input voltage from battery).
 - [ ] Obstacle avoidance (planned upgrade, after flight hardware): forward lidar rangefinder with ArduPilot's built-in avoidance, tested in SITL first. Would relax SAF-8.

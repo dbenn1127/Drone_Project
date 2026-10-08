@@ -48,6 +48,7 @@ REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
     CTL-2  Hold 8 m standoff within +/-2 m                  PASS: 9.5 m (0.5 m margin)
     CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60 deg/s   implemented (mask, clamps, 10 Hz loop)
     CTL-4  No altitude commands                             PASS: vz always 0; altitude 9.6-10.0 m
+    SAF-1  Stop commanding when mode leaves GUIDED          PASS: stops same pass; no forced LAND after takeover
     SAF-4  Stay at least 5 m from the target                PASS (fault injection, keep-out v2)
 
 FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full logs)
@@ -86,8 +87,10 @@ from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
 # FLIGHT SETTINGS
 # ALL_CAPS names are a Python convention for "set once, don't change later."
 # ---------------------------------------------------------------------------
-TARGET_ALT_M = 6.0       # flight altitude, meters above home (CTL-4: held, never changed)
+TARGET_ALT_M = 6.0      # flight altitude, meters above home (CTL-4: held, never changed)
 FOLLOW_SECONDS = 60     # how long to follow the fake target before landing
+RESUME_DELAY_S = 3.0    # wait in "searching" before following again; stands in for the
+                        # operator re-designating the target (PER-3)
 
 # Follow controller
 STANDOFF_M = 8.0        # CTL-2: default follow distance (m)
@@ -418,13 +421,14 @@ print(f"Taking off to {TARGET_ALT_M} m")
 # ===========================================================================
 # SECTION 6: FOLLOW THE TARGET AND LOG DATA
 # A simple state machine. "phase" holds the current state:
-#   climb  -> (reach 95% of target altitude)        -> follow
-#   follow -> (FOLLOW_SECONDS elapsed)              -> land
-#   land   -> (on the ground and disarmed)          -> done
-#   return -> battery failsafe fired; autopilot flying home in RTL
-#   idle   -> mode left GUIDED during follow (pilot or autopilot failsafe, SAF-1);
-#             script sends nothing more (ends like land: on the ground and disarmed)
-#             (ends like land: on the ground and disarmed)
+#   climb     -> (reach 95% of target altitude)                         -> follow
+#   follow    -> (FOLLOW_SECONDS since last (re)start)                  -> land
+#   follow    -> (mode left GUIDED: pilot or autopilot failsafe, SAF-1) -> idle
+#   follow    -> (battery below RTL_BATTERY_PCT)                        -> return
+#   idle      -> sends nothing; (back in GUIDED and armed)              -> searching
+#   searching -> sends nothing; (left GUIDED)                           -> idle
+#   searching -> (RESUME_DELAY_S elapsed; stands in for re-designation) -> follow
+#   land, return, idle -> (on the ground and disarmed)                  -> done
 # Each pass through the loop (about 10 per second, set by the position rate):
 #   1. read position   2. prepare log values   3. print status
 #   4. check for a phase change   5. log a row
@@ -449,6 +453,8 @@ try:
         rows = []               # (time, altitude, climb rate, phase) for the summary
         follow_started = None   # when following began; the fake target's clock starts here
         abort_reason = None     # stays None unless a failsafe fires
+        searching_started = None   # when "searching" began; the resume delay counts from here
+        follow_resumed = None      # when following last (re)started; the end-of-test timer counts from here
 
         # Battery level at takeoff, for "battery used" in the summary.
         batt_msg = m.messages.get("SYS_STATUS")
@@ -499,6 +505,7 @@ try:
             if phase == "climb" and alt >= TARGET_ALT_M * 0.95:
                 phase = "follow"
                 follow_started = time.time()     # the fake target's clock starts now
+                follow_resumed = time.time() #end-of-test timer starts now
                 print(f"  >> {t:6.1f} s  phase climb -> follow")
             
             elif phase == "follow" and m.flightmode != "GUIDED":
@@ -508,6 +515,20 @@ try:
                 # phase is over.
                 phase = "idle"
                 print(f"  >> {t:6.1f} s  phase follow -> {phase} (autopilot switched to {m.flightmode})")
+
+            elif phase =="idle" and m.flightmode == "GUIDED" and m.motors_armed():
+                phase = "searching"
+                searching_started = time.time()
+                print(f"  >> {t:6.1f} s  phase idle -> searching (autopilot back in GUIDED)")
+
+            elif phase == "searching" and m.flightmode != "GUIDED":
+                phase = "idle"
+                print(f"  >> {t:6.1f} s  phase searching -> idle (autopilot switched to {m.flightmode})")
+
+            elif phase == "searching" and RESUME_DELAY_S < time.time() - searching_started:
+                phase = "follow"
+                follow_resumed = time.time()     # end of test timer restarts; target's clock keeps running
+                print(f"  >> {t:6.1f} s  phase searching -> follow (resuming after {RESUME_DELAY_S} s)")
 
             elif phase == "follow":
                 # Battery failsafe. "0 <=" skips the check if battery reads -1 (unknown).
@@ -560,7 +581,7 @@ try:
 
                 # --- End of test: the harness lands (pilot's role, not the follow logic) ---
                 # If LAND isn't confirmed, phase stays "follow" and it retries next pass.
-                if t_follow > FOLLOW_SECONDS:
+                if time.time() - follow_resumed > FOLLOW_SECONDS:
                     if set_mode_confirmed("LAND"):
                         phase = "land"
                         print(f"  >> {t:6.1f} s  follow complete -> LAND confirmed")

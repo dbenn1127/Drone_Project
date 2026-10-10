@@ -41,15 +41,16 @@ CONTROL LAW (one pass, 10 Hz)
     yaw_rate = YAW_GAIN * bearing                        capped at +/-60 deg/s
     speed    = RANGE_GAIN * (range - STANDOFF_M)         capped at +/-5 m/s
     speed    = min(speed, KEEP_OUT_GAIN * (range - KEEP_OUT_M))   keep-out ramp
+    speed    = min(speed, soft_cap)   soft start: cap ramps 1 -> 5 m/s over 5 s after a (re)start
     velocity = speed along the line to the target (split into north/east)
 
 REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
     CTL-1  Keep target within +/-10 deg of centerline       PASS: straight 5.2° max then 0°; circle 4.3° steady
     CTL-2  Hold 8 m standoff within +/-2 m                  PASS: 9.5 m (0.5 m margin)
     CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60 deg/s   implemented (mask, clamps, 10 Hz loop)
-    CTL-4  No altitude commands                             PASS: vz always 0; altitude 9.6-10.0 m
+    CTL-4  No altitude commands                             PASS: vz always 0; altitude 5.76-6.06 m
     SAF-1  Stop commanding when mode leaves GUIDED          PASS: stops same pass; no forced LAND after takeover
-    SAF-4  Stay at least 5 m from the target                PASS (fault injection, keep-out v2)
+    SAF-4  Remain at least 5 m horizontally from the target, including braking distance, and shall not fly directly over people.                PASS (fault injection, keep-out v2)
 
 FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full logs)
     Stage a: loop runs at 10 Hz; range and bearing match hand calculation.
@@ -100,6 +101,8 @@ RANGE_GAIN = 1.0        # m/s of speed per m of range error (proportional)
 # Command limits (CTL-3)
 MAX_SPEED_MS = 5.0      # max horizontal speed command, m/s [TBR]
 MAX_YAW_RATE_DPS = 60   # max yaw-rate command, deg/s [TBR]
+SOFT_START_MS = 1.0     # forward speed limit right after following (re)starts (m/s)
+SOFT_START_S = 5.0      # seconds to ramp the forward limit up to MAX_SPEED_MS
 
 # Keep-out (SAF-4)
 KEEP_OUT_M = 5.0        # the drone must stay at least this far from the target (m)
@@ -362,7 +365,7 @@ else:
 if test_name == "straight":
     target = target_position
 elif test_name == "circle":
-    target = target_circle        
+    target = target_circle   
 else:
     raise SystemExit(f"Unknown test '{test_name}'. Use: straight, circle")
 print(f"  Test case: {test_name}")
@@ -448,7 +451,7 @@ try:
         t0 = time.time()   # stopwatch start for the time_s column
 
         # State that carries over from one pass of the loop to the next:
-        phase = "climb"         # current state: climb -> follow -> land
+        phase = "climb"         # current state: climb, follow, idle, searching, land, return (see the list above)
         last_state = None       # last (mode, armed) announced; used to spot changes
         rows = []               # (time, altitude, climb rate, phase) for the summary
         follow_started = None   # when following began; the fake target's clock starts here
@@ -516,7 +519,7 @@ try:
                 phase = "idle"
                 print(f"  >> {t:6.1f} s  phase follow -> {phase} (autopilot switched to {m.flightmode})")
 
-            elif phase =="idle" and m.flightmode == "GUIDED" and m.motors_armed():
+            elif phase == "idle" and m.flightmode == "GUIDED" and m.motors_armed():
                 phase = "searching"
                 searching_started = time.time()
                 print(f"  >> {t:6.1f} s  phase idle -> searching (autopilot back in GUIDED)")
@@ -550,12 +553,22 @@ try:
                 compass_bearing = math.degrees(math.atan2(de, dn))   # direction to target; 0 = north, 90 = east
                 # Relative to the nose, wrapped to -180..+180. + = target to the right.
                 rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
-
+                
+                # --- Soft start: no lunge after (re)starting to follow ---
+                # Right after following starts or resumes after a hand-back, the
+                # target may be far away, and the drone would otherwise jump straight
+                # to MAX_SPEED_MS. Instead, the forward speed limit starts at
+                # SOFT_START_MS and grows in a straight line to MAX_SPEED_MS over
+                # SOFT_START_S seconds (e.g. 1.0 -> 5.0 m/s over 5 s).
+                since_resume = time.time() - follow_resumed     # seconds since following (re)started
+                ramp = min(1.0, since_resume / SOFT_START_S)    # 0 at (re)start, 1 when fully ramped up
+                soft_cap = SOFT_START_MS + ramp * (MAX_SPEED_MS - SOFT_START_MS)   # this pass's forward speed limit (m/s)
+                
                 # --- Control (stage d: yaw + standoff, with limits and keep-out) ---
                 # Yaw: turn rate proportional to how far off-center the target is,
                 # capped at +/-60 deg/s (CTL-3). + = turn right.
                 yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))
-
+                
                 # Speed: proportional to range error, capped at +/-5 m/s (CTL-3).
                 # + = toward the target, - = away from it.
                 speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))
@@ -564,6 +577,9 @@ try:
                 # zero at 5 m, negative (back away) inside it. Runs every pass so the
                 # drone is already braking when it reaches the line.
                 speed = min(speed, KEEP_OUT_GAIN * (range_m - KEEP_OUT_M))
+                
+                # Soft start limits toward-target speed only; backing away (keep-out) is never slowed.
+                speed = min(speed, soft_cap)
 
                 # Split speed into north/east along the line to the target.
                 # Guard: no direction exists if the drone is exactly on the target.

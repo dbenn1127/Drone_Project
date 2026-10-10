@@ -92,6 +92,7 @@ SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows
 | 2026-10-02 | SAF-4 | Same; keep-out v2 (approach speed ≤ 0.5 × (range − 5)) | Closest 6.86 m; 0 of 600 samples inside 5 m; settled 8.0 m | Pass |
 | 2026-10-07 | SAF-1 | Hand-back: BRAKE at 11.6 s, back to GUIDED at 34.5 s (logged) | idle → searching → follow after 3.1 s (RESUME_DELAY_S = 3); 0 commands in idle or searching; target clock kept running; end-of-test timer restarted on resume (LAND 60.0 s after resume) | Pass |
 | 2026-10-07 | — | Same run: catch-up after hand-back | Range 46.6 m at resume; speed command at the 5.0 m/s cap for ~10 s; settled at ~9.5 m by 51 s | Finding: lunge; soft start next |
+| 2026-10-09 | follow_sim.py straight | Soft start: BRAKE at 13.0 s, GUIDED at 28.2 s, follow resumed at 31.2 s from 35 m. Speed command ramped 1.4 → 5.0 m/s over 5.0 s (predicted 1.0 → 5.0 over 5 s, +0.8 m/s per s). Closest approach 8.4 m; settled 9.5 m. | SAF-4, CTL-2 | Pass |
 
 Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), but v1 met that wording and still let the vehicle reach 3.2 m. SAF-4 was reworded on 2026-10-07 to state the vehicle outcome.
 

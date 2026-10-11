@@ -55,6 +55,24 @@ Match the PyTorch build to your driver's CUDA version (`nvidia-smi` shows it). T
 
 </details>
 
+<details>
+   <summary>Jetson setup (JetPack 7.2.1)</summary>
+
+   python3 -m venv --system-site-packages ~/yolo
+   source ~/yolo/bin/activate
+   pip install ultralytics "lap>=0.5.12"
+   pip uninstall -y torch torchvision opencv-python numpy
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu132
+   cd perception
+   yolo export model=yolo11n.pt format=engine device=0 half=True
+   python jetson_live.py
+
+   pip's OpenCV can't read the CSI camera (no GStreamer), so it is removed and the
+   system OpenCV 4.8 (GStreamer YES, NumPy 1.26) is used instead. cu132 matches
+   JetPack 7.2's CUDA 13.2.
+
+</details>
+
 ## Simulation
 
 The flight scripts fly ArduPilot's simulator through Mission Planner. They run pre-flight checks, wait for me to confirm before arming, log every flight, and land the drone if anything goes wrong.

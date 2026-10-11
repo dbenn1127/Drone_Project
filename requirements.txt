@@ -4,3 +4,4 @@ pymavlink
 matplotlib
 ultralytics
 opencv-python
+lap>=0.5.12        # ByteTrack tracking (Ultralytics installs it on first use otherwise)

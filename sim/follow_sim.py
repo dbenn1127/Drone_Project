@@ -50,7 +50,8 @@ REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
     CTL-3  Velocity + yaw rate only, >= 10 Hz, 5 m/s, 60 deg/s   implemented (mask, clamps, 10 Hz loop)
     CTL-4  No altitude commands                             PASS: vz always 0; altitude 5.76-6.06 m
     SAF-1  Stop commanding when mode leaves GUIDED          PASS: stops same pass; no forced LAND after takeover
-    SAF-4  Remain at least 5 m horizontally from the target, including braking distance, and shall not fly directly over people.                PASS (fault injection, keep-out v2)
+    SAF-4  Remain at least 5 m horizontally from the target, 
+            including braking distance, and shall not fly directly over people.                PASS (fault injection, keep-out v2)
 
 FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full logs)
     Stage a: loop runs at 10 Hz; range and bearing match hand calculation.
@@ -66,6 +67,13 @@ FINDINGS (fake target walking east at 1.5 m/s; see the project brief for full lo
         at 8.0 m (where 0.5 * (r - 5) = 1.5 m/s), 0 samples inside 5 m.
     Safety harness: mode changes are confirmed, not fire-and-forget (an unconfirmed
       Ctrl+C LAND once left the drone hovering); any crash in the loop also lands.
+    SAF-1 / hand-back: leaving GUIDED stops commands the same pass (idle); back in
+      GUIDED -> searching -> follow after RESUME_DELAY_S. In SITL use BRAKE, not
+      Loiter, for takeover tests (Loiter descends with the sim throttle at zero).
+    Soft start: after a resume from 35 m the drone used to jump straight to 5 m/s.
+      The speed cap now ramps 1 -> 5 m/s over 5 s (measured 1.4 -> 5.0).
+    Battery failsafe: its own branch, so the pass where it fires is logged and no
+      velocity command follows the switch to RTL.
 
 OUTPUT
     follow_log.csv in this folder (gitignored; regenerated every run): one row
@@ -365,7 +373,7 @@ else:
 if test_name == "straight":
     target = target_position
 elif test_name == "circle":
-    target = target_circle   
+    target = target_circle
 else:
     raise SystemExit(f"Unknown test '{test_name}'. Use: straight, circle")
 print(f"  Test case: {test_name}")
@@ -507,8 +515,8 @@ try:
             # if / elif: only ONE branch runs per pass, the first whose test is true.
             if phase == "climb" and alt >= TARGET_ALT_M * 0.95:
                 phase = "follow"
-                follow_started = time.time()     # the fake target's clock starts now
-                follow_resumed = time.time() #end-of-test timer starts now
+                follow_started = time.time()        # the fake target's clock starts now
+                follow_resumed = time.time()        # end-of-test timer starts now
                 print(f"  >> {t:6.1f} s  phase climb -> follow")
             
             elif phase == "follow" and m.flightmode != "GUIDED":
@@ -530,7 +538,7 @@ try:
 
             elif phase == "searching" and RESUME_DELAY_S < time.time() - searching_started:
                 phase = "follow"
-                follow_resumed = time.time()     # end of test timer restarts; target's clock keeps running
+                follow_resumed = time.time()     # end-of-test timer restarts; target's clock keeps running
                 print(f"  >> {t:6.1f} s  phase searching -> follow (resuming after {RESUME_DELAY_S} s)")
 
             elif phase == "follow" and batt and 0 <= batt.battery_remaining < RTL_BATTERY_PCT:

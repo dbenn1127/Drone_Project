@@ -533,14 +533,13 @@ try:
                 follow_resumed = time.time()     # end of test timer restarts; target's clock keeps running
                 print(f"  >> {t:6.1f} s  phase searching -> follow (resuming after {RESUME_DELAY_S} s)")
 
-            elif phase == "follow":
+            elif phase == "follow" and batt and 0 <= batt.battery_remaining < RTL_BATTERY_PCT:
                 # Battery failsafe. "0 <=" skips the check if battery reads -1 (unknown).
-                if batt and 0 <= batt.battery_remaining < RTL_BATTERY_PCT:
-                    abort_reason = f"battery at {batt.battery_remaining}% (limit {RTL_BATTERY_PCT}%)"
-                    failsafe(abort_reason, "RTL", t)
-                    phase = "return"
-                    continue
-
+                abort_reason = f"battery at {batt.battery_remaining}% (limit {RTL_BATTERY_PCT}%)"
+                failsafe(abort_reason, "RTL", t)
+                phase = "return"
+            
+            elif phase == "follow":
                 # --- Where is the target? (stands in for the camera estimate) ---
                 t_follow = time.time() - follow_started   # seconds since following began
                 tn, te = target(t_follow)        # where the target is now (m north, m east)

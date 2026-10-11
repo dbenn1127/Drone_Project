@@ -94,6 +94,8 @@ SITL results from `sim/follow_sim.py` (ArduPilot SITL via Mission Planner). Rows
 | 2026-10-07 | — | Same run: catch-up after hand-back | Range 46.6 m at resume; speed command at the 5.0 m/s cap for ~10 s; settled at ~9.5 m by 51 s | Finding: lunge; soft start next |
 | 2026-10-09 | follow_sim.py straight | Soft start: BRAKE at 13.0 s, GUIDED at 28.2 s, follow resumed at 31.2 s from 35 m. Speed command ramped 1.4 → 5.0 m/s over 5.0 s (predicted 1.0 → 5.0 over 5 s, +0.8 m/s per s). Closest approach 8.4 m; settled 9.5 m. | SAF-4, CTL-2 | Pass |
 | 2026-10-09 | Jetson Orin Nano Super, JetPack 7.2.1, MAXN_SUPER | yolo11n TensorRT FP16 engine built on the Jetson. Over 30 IMX219 frames: 5.0 ms preprocess + 4.3 ms inference + 3.1 ms postprocess = 12.4 ms per frame (~80 FPS, detection only). Excludes camera capture and tracking. | PER-4 | Partial pass (live loop pending) |
+| 2026-10-10 | follow_sim.py straight | Battery failsafe (RTL_BATTERY_PCT raised for test): fired at 34.65 s during follow; that pass logged with phase "return" and no follow values; last velocity command 34.55 s, none after. RTL climbed to 15 m, returned to 0.03 m from home, landed and disarmed; script ended at 84 s. | SAF-1, SAF-2 | Pass |
+
 
 Finding: SAF-4 as written limits commands ("do not command motion within 5 m"), but v1 met that wording and still let the vehicle reach 3.2 m. SAF-4 was reworded on 2026-10-07 to state the vehicle outcome.
 

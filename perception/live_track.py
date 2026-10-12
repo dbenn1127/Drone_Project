@@ -48,6 +48,9 @@ import time
 import cv2
 from ultralytics import YOLO
 
+import json
+import socket
+
 
 # ---------------------------------------------------------------------------
 # SETTINGS
@@ -63,9 +66,15 @@ DEVICE = 0               # Where YOLO runs: 0 = first NVIDIA GPU (the 3090 Ti), 
                          # silently falling back to the much slower CPU (PER-4: >= 10 Hz).
 yolo_ms_avg = 0.0        # smoothed YOLO inference time in milliseconds
 
+# Link to follow_sim.py (step 5). One small UDP message per frame.
+# Same PC = 127.0.0.1. Later, from the Jetson: the PC's IP address.
+SIM_ADDR = ("127.0.0.1", 5005)
+
 # ---------------------------------------------------------------------------
 # SETUP: model, camera, and state
 # ---------------------------------------------------------------------------
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)   # UDP socket to send target bearing/range to follow_sim.py
+
 model = YOLO("yolo11n.engine")   # PER-1: person detector, TensorRT FP16 engine built for this GPU
                                     # (rebuild with: yolo export model=yolo11n.pt format=engine device=0 half=True)
 cap = cv2.VideoCapture(0)        # Iriun camera; try 1 or 2 if 0 is wrong
@@ -113,7 +122,11 @@ while True:
     ok, frame = cap.read()
     if not ok:
         break
-
+    
+    bearing = None        # set only if the target is seen THIS frame
+    distance = None
+    status = "none"       # none / tracking / lost / hover (sent to follow_sim)
+    
     # PER-4: loop rate. dt = seconds since the previous frame.
     now = time.perf_counter()
     dt = now - last_frame_time
@@ -168,11 +181,13 @@ while True:
     # target_id is NEVER cleared here, so the system can't switch people on its own.
     if found:
         lost_since = None
+        status = "tracking"
     elif target_id is not None:
         if lost_since is None:
             lost_since = time.time()               # target just went missing
         lost_for = time.time() - lost_since        # seconds missing (clock, not frames)
         if lost_for < LOST_TIMEOUT_S:
+            status = "lost"
             cv2.putText(frame, f"LOST {lost_for:.1f} s", (30, 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         else:
@@ -180,13 +195,16 @@ while True:
             # velocity and alerts the GCS. Here it is a display-only alert.
             cv2.putText(frame, "Hover - click to redesignate", (30, 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
+            status = "hover"
     # PER-4 readout: loop rate and YOLO's own time per frame, bottom-left corner.
     yolo_ms = results[0].speed["inference"]
     yolo_ms_avg = 0.9 * yolo_ms_avg + 0.1 * yolo_ms   # smoothed
     cv2.putText(frame, f"{fps:4.1f} FPS   YOLO {yolo_ms_avg:4.1f} ms",
                 (30, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                 (255, 255, 255), 2)
+
+    msg = {"t": time.time(), "status": status, "bearing_deg": bearing, "range_m": distance}
+    sock.sendto(json.dumps(msg).encode(), SIM_ADDR)
     
     cv2.imshow("Follow-me perception", frame)
 

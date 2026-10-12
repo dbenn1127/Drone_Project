@@ -38,10 +38,10 @@ WHO DOES WHAT
     ArduPilot, the autopilot, does all the actual flying.
 
 CONTROL LAW (one pass, 10 Hz)
-    yaw_rate = YAW_GAIN * bearing                        capped at +/-60 deg/s
-    speed    = RANGE_GAIN * (range - STANDOFF_M)         capped at +/-5 m/s
-    speed    = min(speed, KEEP_OUT_GAIN * (range - KEEP_OUT_M))   keep-out ramp
-    speed    = min(speed, soft_cap)   soft start: cap ramps 1 -> 5 m/s over 5 s after a (re)start
+    yaw_rate = YAW_GAIN * bearing                                   capped at +/-60 deg/s
+    speed    = RANGE_GAIN * (range - STANDOFF_M)                    capped at +/-5 m/s
+    speed    = min(speed, KEEP_OUT_GAIN * (range - KEEP_OUT_M))     keep-out ramp
+    speed    = min(speed, soft_cap)                                 soft start: cap ramps 1 -> 5 m/s over 5 s after a (re)start
     velocity = speed along the line to the target (split into north/east)
 
 REQUIREMENTS THIS SCRIPT PRODUCES EVIDENCE FOR
@@ -88,6 +88,8 @@ import csv    # writes the flight log as a CSV file
 import math   # hypot and atan2 for range and bearing; radians for yaw rate
 import sys    # reads the test name and optional connection typed after the script name
 import time   # clock and stopwatch functions
+import json
+import socket
 
 from pymavlink import mavutil   # speaks MAVLink, the drone's message protocol
 
@@ -121,6 +123,10 @@ KEEP_OUT_GAIN = 0.5     # m/s of allowed approach speed per m outside the keep-o
 # backstop underneath; set those in Mission Planner.
 RTL_BATTERY_PCT = 40    # battery below this while following: stop and fly home
 
+# Live target (step 5): the desk camera is a fixed window onto the sim map.
+# The camera sits at home (0, 0) looking north; you appear in front of it.
+LIVE_SCALE = 5.0        # map meters per real meter (1 m step at the desk = 5 m in the sim)
+PERCEPTION_STALE_S = 0.5  # older than this = perception is dead or stuck -> no target
 
 # ---------------------------------------------------------------------------
 # FAKE TARGET
@@ -138,6 +144,30 @@ def target_circle(t):
     center_n, center_e = 20, 0
     angle = (speed / radius) * t  # radians since start
     return center_n - (radius * math.cos(angle)), center_e + (radius * math.sin(angle))   # (north_m, east_m)
+
+def target_live(t):
+    """Live target: where the camera sees you, placed on the sim map.
+
+    Returns (north_m, east_m), or None when there's no trustworthy target:
+    no message yet, message too old, or status isn't "tracking".
+    (t is unused; it's here so all target functions are called the same way.)
+    """
+
+    if latest is None or latest_rx is None:
+        return None
+    if time.time() - latest_rx > PERCEPTION_STALE_S:
+        return None
+    if latest["status"] != "tracking":
+        return None
+    if latest["range_m"] is None:
+        return None
+        
+
+    #Camera sees you at (range, bearing). Split into forward and right of the camera.
+    b = math.radians(latest["bearing_deg"])   # bearing to you, radians
+    forward = latest["range_m"] * math.cos(b)   # meters in front of the camera
+    right = latest["range_m"] * math.sin(b)     # meters to the right (+) or left (-) of the camera
+    return LIVE_SCALE * forward, LIVE_SCALE * right   # (north_m, east_m) on the sim map
 
 # ===========================================================================
 # SECTION 1: CONNECT TO THE DRONE
@@ -171,6 +201,12 @@ m = mavutil.mavlink_connection(
 m.wait_heartbeat()
 print(f"Heartbeat from system {m.target_system}, component {m.target_component}")
 
+# --- Perception link (step 5): bearing/range messages from live_track.py ---
+perc_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+perc_sock.bind(("127.0.0.1", 5005))    # later, from the Jetson: ("0.0.0.0", 5005)
+perc_sock.setblocking(False)           # never wait; the control loop must keep running
+latest = None        # newest perception message (dict), or None if none yet
+latest_rx = None     # when it arrived, on THIS computer's clock (time.time())
 
 # ===========================================================================
 # SECTION 2: REQUEST TELEMETRY
@@ -358,6 +394,17 @@ def go_no_go(min_battery_pct=80, min_satellites=8):
                         f"(need 3+ and {min_satellites}+)")
     return problems
 
+def read_perception():
+    """Read every waiting perception message; keep only the newest. Never waits."""
+    global latest, latest_rx
+    while True:
+        try:
+            data, addr = perc_sock.recvfrom(1024)   # buffer size = 1024 bytes
+            latest = json.loads(data.decode("utf-8"))
+            latest_rx = time.time()
+        except BlockingIOError:
+            break
+    
 
 # ===========================================================================
 # SECTION 4: PRE-FLIGHT CHECKS, OPERATOR CONFIRMATION, GUIDED MODE, ARM
@@ -374,6 +421,8 @@ if test_name == "straight":
     target = target_position
 elif test_name == "circle":
     target = target_circle
+elif test_name == "live":
+    target = target_live
 else:
     raise SystemExit(f"Unknown test '{test_name}'. Use: straight, circle")
 print(f"  Test case: {test_name}")
@@ -461,11 +510,14 @@ try:
         # State that carries over from one pass of the loop to the next:
         phase = "climb"         # current state: climb, follow, idle, searching, land, return (see the list above)
         last_state = None       # last (mode, armed) announced; used to spot changes
+        last_perc_status = None  # last perception status announced; used to spot changes
         rows = []               # (time, altitude, climb rate, phase) for the summary
         follow_started = None   # when following began; the fake target's clock starts here
         abort_reason = None     # stays None unless a failsafe fires
         searching_started = None   # when "searching" began; the resume delay counts from here
         follow_resumed = None      # when following last (re)started; the end-of-test timer counts from here
+        soft_start_at = None    # when the soft-start ramp last restarted (follow start, hand-back, re-acquire)
+        holding = False            # True while the follow branch is holding (no trustworthy target)
 
         # Battery level at takeoff, for "battery used" in the summary.
         batt_msg = m.messages.get("SYS_STATUS")
@@ -475,9 +527,12 @@ try:
 
             # --- 1. Read position ---------------------------------------------
             p = position()
+            
             if p is None:
                 print("  !! WARNING: no position data for 5 s. Retrying ...")
                 continue
+            read_perception()     # newest message from live_track.py, if any (never waits)
+
             alt = p["alt_m"]
             t = round(time.time() - t0, 2)   # seconds since takeoff command (laptop clock)
 
@@ -508,6 +563,17 @@ try:
             link_age = m.time_since("HEARTBEAT")
             print(f"{t:6.1f} s  alt {alt:5.1f} m  climb {p['climb_ms']:5.2f} m/s  "
                   f"batt {batt_txt}  gps {gps_txt}  link {link_age:.1f}s  ({phase})")
+
+            age = time.time() - latest_rx if latest_rx else None
+            perc_txt = f"{latest['status']}  age {age:.2f}s" if latest else "--"
+            print(f"{t:6.1f} perception: {perc_txt}")
+
+            #Announce perception status changes the moment they happen.
+            perc_status = latest['status'] if latest else None
+            if perc_status != last_perc_status:
+                print(f"  >> {t:6.1f} s  perception status: {perc_status}")
+                last_perc_status = perc_status
+
             if link_age > 3:
                 print(f"  !! WARNING: no heartbeat for {link_age:.1f} s. Link may be down.")
 
@@ -517,6 +583,7 @@ try:
                 phase = "follow"
                 follow_started = time.time()        # the fake target's clock starts now
                 follow_resumed = time.time()        # end-of-test timer starts now
+                soft_start_at = time.time()          # soft-start ramp starts now
                 print(f"  >> {t:6.1f} s  phase climb -> follow")
             
             elif phase == "follow" and m.flightmode != "GUIDED":
@@ -539,6 +606,7 @@ try:
             elif phase == "searching" and RESUME_DELAY_S < time.time() - searching_started:
                 phase = "follow"
                 follow_resumed = time.time()     # end-of-test timer restarts; target's clock keeps running
+                soft_start_at = time.time()       # soft-start ramp restarts
                 print(f"  >> {t:6.1f} s  phase searching -> follow (resuming after {RESUME_DELAY_S} s)")
 
             elif phase == "follow" and batt and 0 <= batt.battery_remaining < RTL_BATTERY_PCT:
@@ -550,57 +618,74 @@ try:
             elif phase == "follow":
                 # --- Where is the target? (stands in for the camera estimate) ---
                 t_follow = time.time() - follow_started   # seconds since following began
-                tn, te = target(t_follow)        # where the target is now (m north, m east)
-                if here[0] is None:
-                    continue                              # no local position yet; skip this pass
-
-                # --- Range and bearing (same quantities perception produces) ---
-                dn, de = tn - here[0], te - here[1]       # target relative to drone (m north, m east)
-                range_m = math.hypot(dn, de)              # straight-line distance (m)
-                compass_bearing = math.degrees(math.atan2(de, dn))   # direction to target; 0 = north, 90 = east
-                # Relative to the nose, wrapped to -180..+180. + = target to the right.
-                rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
-                
-                # --- Soft start: no lunge after (re)starting to follow ---
-                # Right after following starts or resumes after a hand-back, the
-                # target may be far away, and the drone would otherwise jump straight
-                # to MAX_SPEED_MS. Instead, the forward speed limit starts at
-                # SOFT_START_MS and grows in a straight line to MAX_SPEED_MS over
-                # SOFT_START_S seconds (e.g. 1.0 -> 5.0 m/s over 5 s).
-                since_resume = time.time() - follow_resumed     # seconds since following (re)started
-                ramp = min(1.0, since_resume / SOFT_START_S)    # 0 at (re)start, 1 when fully ramped up
-                soft_cap = SOFT_START_MS + ramp * (MAX_SPEED_MS - SOFT_START_MS)   # this pass's forward speed limit (m/s)
-                
-                # --- Control (stage d: yaw + standoff, with limits and keep-out) ---
-                # Yaw: turn rate proportional to how far off-center the target is,
-                # capped at +/-60 deg/s (CTL-3). + = turn right.
-                yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))
-                
-                # Speed: proportional to range error, capped at +/-5 m/s (CTL-3).
-                # + = toward the target, - = away from it.
-                speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))
-
-                # Keep-out (SAF-4): the closer to 5 m, the slower the allowed approach;
-                # zero at 5 m, negative (back away) inside it. Runs every pass so the
-                # drone is already braking when it reaches the line.
-                speed = min(speed, KEEP_OUT_GAIN * (range_m - KEEP_OUT_M))
-                
-                # Soft start limits toward-target speed only; backing away (keep-out) is never slowed.
-                speed = min(speed, soft_cap)
-
-                # Split speed into north/east along the line to the target.
-                # Guard: no direction exists if the drone is exactly on the target.
-                if range_m > 0:
-                    vn = speed * dn / range_m
-                    ve = speed * de / range_m
+                pos = target(t_follow)           # (north_m, east_m), or None if no trustworthy target
+                if pos is None:
+                    # HOLD (SAF-3): no usable target -> zero velocity and yaw rate. The drone
+                    # hovers in GUIDED until perception is tracking again. No "continue",
+                    # so the end-of-test check and the log row still happen this pass.
+                    send_velocity_yaw_rate(0, 0, 0)
+                    yaw_rate = speed = 0
+                    print(f"  follow t {t_follow:5.1f} s  no trustworthy target -> HOLD")
+                    holding = True
                 else:
-                    vn = 0
-                    ve = 0
-                send_velocity_yaw_rate(vn, ve, yaw_rate)   # the only command the follow logic sends (SAF-2)
+                    tn, te = pos
+                    if holding:
+                        # Target re-acquired after a hold: it may have moved, so ramp up
+                        # gently instead of lunging (finding from the first live test).
+                        soft_start_at = time.time()
+                        holding = False
+                        print(f"  >> {t:6.1f} s  target re-acquired -> soft start")
 
-                print(f"  follow t {t_follow:5.1f} s  target N {tn:5.1f} E {te:5.1f}  "
-                      f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  "
-                      f"yaw {yaw_rate:+6.1f} deg/s  speed {speed:+5.1f} m/s")
+                    if here[0] is None:
+                        continue                              # no local position yet; skip this pass
+
+                    # --- Range and bearing (same quantities perception produces) ---
+                    dn, de = tn - here[0], te - here[1]       # target relative to drone (m north, m east)
+                    range_m = math.hypot(dn, de)              # straight-line distance (m)
+                    compass_bearing = math.degrees(math.atan2(de, dn))   # direction to target; 0 = north, 90 = east
+                    # Relative to the nose, wrapped to -180..+180. + = target to the right.
+                    rel_bearing = (compass_bearing - p["heading_deg"] + 180) % 360 - 180
+                    
+                    # --- Soft start: no lunge after (re)starting to follow ---
+                    # Right after following starts, resumes after a hand-back, or the target re-acquired after a hold:
+                    # the target may be far away, and the drone would otherwise jump straight
+                    # to MAX_SPEED_MS. Instead, the forward speed limit starts at
+                    # SOFT_START_MS and grows in a straight line to MAX_SPEED_MS over
+                    # SOFT_START_S seconds (e.g. 1.0 -> 5.0 m/s over 5 s).
+                    since_resume = time.time() - soft_start_at     # seconds since the last ramp (re)started
+                    ramp = min(1.0, since_resume / SOFT_START_S)    # 0 at (re)start, 1 when fully ramped up
+                    soft_cap = SOFT_START_MS + ramp * (MAX_SPEED_MS - SOFT_START_MS)   # this pass's forward speed limit (m/s)
+                    
+                    # --- Control (stage d: yaw + standoff, with limits and keep-out) ---
+                    # Yaw: turn rate proportional to how far off-center the target is,
+                    # capped at +/-60 deg/s (CTL-3). + = turn right.
+                    yaw_rate = max(-MAX_YAW_RATE_DPS, min(MAX_YAW_RATE_DPS, YAW_GAIN * rel_bearing))
+                    
+                    # Speed: proportional to range error, capped at +/-5 m/s (CTL-3).
+                    # + = toward the target, - = away from it.
+                    speed = max(-MAX_SPEED_MS, min(MAX_SPEED_MS, RANGE_GAIN * (range_m - STANDOFF_M)))
+
+                    # Keep-out (SAF-4): the closer to 5 m, the slower the allowed approach;
+                    # zero at 5 m, negative (back away) inside it. Runs every pass so the
+                    # drone is already braking when it reaches the line.
+                    speed = min(speed, KEEP_OUT_GAIN * (range_m - KEEP_OUT_M))
+                    
+                    # Soft start limits toward-target speed only; backing away (keep-out) is never slowed.
+                    speed = min(speed, soft_cap)
+
+                    # Split speed into north/east along the line to the target.
+                    # Guard: no direction exists if the drone is exactly on the target.
+                    if range_m > 0:
+                        vn = speed * dn / range_m
+                        ve = speed * de / range_m
+                    else:
+                        vn = 0
+                        ve = 0
+                    send_velocity_yaw_rate(vn, ve, yaw_rate)   # the only command the follow logic sends (SAF-2)
+
+                    print(f"  follow t {t_follow:5.1f} s  target N {tn:5.1f} E {te:5.1f}  "
+                        f"range {range_m:5.1f} m  bearing {rel_bearing:+6.1f} deg  "
+                        f"yaw {yaw_rate:+6.1f} deg/s  speed {speed:+5.1f} m/s")
 
                 # --- End of test: the harness lands (pilot's role, not the follow logic) ---
                 # If LAND isn't confirmed, phase stays "follow" and it retries next pass.

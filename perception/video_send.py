@@ -14,7 +14,7 @@ MAX_UDP = 65000                       # one UDP packet can't carry more than ~65
 
 GST = ("nvarguscamerasrc sensor-id=0 ! "
        "video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! "
-       "nvvidconv ! video/x-raw,width=1280,height=720,format=BGRx ! "
+       "nvvidconv flip-method=2 ! video/x-raw,width=1280,height=720,format=BGRx ! "
        "videoconvert ! video/x-raw,format=BGR ! "
        "appsink drop=true max-buffers=1")
 

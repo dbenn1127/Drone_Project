@@ -1,6 +1,6 @@
 """
 video_view.py - Ground station video window (step 5, video piece 1).
-Shows the Jetson's camera. Later: boxes, click-to-designate, HUD.
+Shows the Jetson's camera. video, box list, click-to-designate with ACK/NACK status, and NO VIDEO warning.
 Press q in the window to quit.
 """
 import socket
@@ -17,7 +17,9 @@ pending_seq = None          # request number we are waiting on or None
 pending_since = 0.0         # when we sent it (for the 1 s timeout)
 status_text = "No target - click a person"  #status line shown on the video
 REPLY_TIMEOUT_S = 1.0       # no reply within this long = "click again"
-
+last_frame = None            # ← NEW: newest decoded picture, kept so we can redraw without new video
+last_frame_time = 0.0        # ← NEW: when it arrived
+VIDEO_TIMEOUT_S = 1.0        # ← NEW: no new frame for this long = show NO VIDEO
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(LISTEN)
@@ -26,8 +28,8 @@ sock.setblocking(False)      # never wait; the window must stay responsive
 # Second socket for the box list (port 5601). Separate port = separate "mailbox".
 box_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 box_sock.bind(("0.0.0.0", 5601))
-box_sock.setblocking(False)     # newest box list from the Jetson (a dict), or None
-latest_boxes = None
+box_sock.setblocking(False)     
+latest_boxes = None         # newest box list from the Jetson (a dict), or None
 
 def newest_packet(s):
     """Read every waiting packet; return only the newest (or None if none waiting)."""
@@ -42,7 +44,7 @@ def newest_packet(s):
 
 def on_click(event, x, y, flags, param):
     """OpenCV calls this for every mouse event in the window. Left click = pick a person."""
-    global seq, pending_seq, pending_since, status_text                              # we CHANGE seq, so it needs global
+    global seq, pending_seq, pending_since, status_text         # all four are CHANGED below, so they need global
     if event != cv2.EVENT_LBUTTONDOWN:
         return
     if not latest_boxes:
@@ -85,26 +87,36 @@ while True:
             status_text = "No reply from drone - click again"
             pending_seq = None
 
+    # New video frame? Decode it and remember it. (No "continue" here any more:
+    # the overlay below must be redrawn every pass, video or not.)
     data = newest_packet(sock)
-    if data is None:
-        time.sleep(0.005)                  # nothing new; don't spin the CPU
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-        continue
+    if data is not None:
+        frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if frame is not None:                      # skip damaged packets
+            last_frame = frame
+            last_frame_time = time.time()
+            now = time.perf_counter()
+            fps = 0.9 * fps + 0.1 / (now - last)   # smoothed, like live_track.py
+            last = now
 
-    frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-    if frame is None:                      # damaged packet; skip it
-        continue
+    # Draw the overlay on a COPY of the last frame, every pass.
+    if last_frame is not None:
+        video_age = time.time() - last_frame_time
+        if video_age > VIDEO_TIMEOUT_S:
+            shown = (last_frame * 0.3).astype(np.uint8)    # 30% brightness: clearly not live
+            cv2.putText(shown, f"NO VIDEO {video_age:.1f} s", (180, 190),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        else:
+            shown = last_frame.copy()                 # copy, so text never piles up on the stored frame
+        cv2.putText(shown, f"{fps:4.1f} FPS", (10, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(shown, status_text, (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.imshow("Ground view", shown)
 
-    now = time.perf_counter()
-    fps = 0.9 * fps + 0.1 / (now - last)   # smoothed, like live_track.py
-    last = now
-    cv2.putText(frame, f"{fps:4.1f} FPS", (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, status_text, (10, 50),                 # ← NEW: under the FPS counter
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    cv2.imshow("Ground view", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+    if data is None:
+        time.sleep(0.005)                          # nothing new; don't spin the CPU
 
 cv2.destroyAllWindows()

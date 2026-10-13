@@ -4,6 +4,7 @@ Camera -> YOLO11n + ByteTrack -> boxes drawn on the frame -> video + box list to
 Later (4.3): designated target, bearing/range to follow_sim, ACK/NACK.
 """
 import json
+import math
 import socket
 import time
 import cv2
@@ -15,6 +16,11 @@ DESIGNATE_PORT = 5602
 SEND_W, SEND_H = 640, 360
 JPEG_QUALITY = 70
 MAX_UDP = 65000
+# ← NEW (part 6): perception message to the follow logic
+PERCEPTION_ADDR = (GROUND_IP, 5005)   # laptop for testing; PC (follow_sim) in 4.4
+HFOV_DEG = 62.2           # IMX219 horizontal field of view, deg. [TBR - see note]
+PERSON_HEIGHT_M = 1.88    # EST-2: assumed target height (you, 6'2")
+LOST_TIMEOUT_S = 2.0      # SAF-3: lost this long -> hover
 
 GST = ( "nvarguscamerasrc sensor-id=0 ! "
        "video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! "
@@ -26,6 +32,13 @@ model = YOLO("yolo11n.engine", task="detect")
 cap = cv2.VideoCapture(GST, cv2.CAP_GSTREAMER)
 if not cap.isOpened():
     raise SystemExit("Camera did not open")
+
+# ← NEW: pinhole camera numbers for the FULL frame we run YOLO on (1280 wide)
+FRAME_W = 1280
+cx = FRAME_W / 2                                           # bearing = 0 at this column
+fx = (FRAME_W / 2) / math.tan(math.radians(HFOV_DEG / 2))  # focal length, pixels
+print(f"cx {cx:.0f}  fx {fx:.0f}")
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # ← NEW: socket for receiving designation commands (bound, so it gets mail on 5602)
@@ -35,7 +48,7 @@ cmd_sock.setblocking(False)  # never wait; the camera loop must keep running
 
 target_id = None             # PER-3: the operator-designated track ID, None = no target
 last_reply = None            # newest ACK/NACK, repeated in every box list message
-
+lost_since = None            # ← NEW: SAF-3: when the target went missing; None = not lost
 frame_no = 0
 
 def newest_command():
@@ -97,6 +110,6 @@ while True:
     data = jpg.tobytes()
     if len(data) <= MAX_UDP:
         sock.sendto(data, (GROUND_IP, VIDEO_PORT))
-        msg = {"frame": frame_no, "boxes": box_list,
-           "target": target_id, "reply": last_reply}                       # ← CHANGED: 2 new fields
+    msg = {"frame": frame_no, "boxes": box_list,
+        "target": target_id, "reply": last_reply}                       # ← CHANGED: 2 new fields
     sock.sendto(json.dumps(msg).encode(), (GROUND_IP, BOXES_PORT))    # same encoding as live_track.py's message

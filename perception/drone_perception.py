@@ -43,7 +43,7 @@ def newest_command():
     newest = None
     while True:
         try:
-            data, addr = cmd_sock.recv_from(1024)
+            data, addr = cmd_sock.recvfrom(1024)
             newest = json.loads(data)
         except BlockingIOError:
             break

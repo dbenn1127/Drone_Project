@@ -127,6 +127,11 @@ while True:
         r = f"{range_m:.1f} m" if range_m is not None else "-"
         print(f"{status:8}  bearing {b:>10}  range {r:>7}")
 
+        # ← NEW (6c): perception message to the follow logic, every frame
+    perc = {"t": time.time(), "status": status,
+            "bearing_deg": bearing, "range_m": range_m}
+    sock.sendto(json.dumps(perc).encode(), PERCEPTION_ADDR)
+
     # Shrink for sending; boxes must shrink by the same factor.
     small = cv2.resize(frame, (SEND_W, SEND_H))
     scale = SEND_W / frame.shape[1]                                 # small width / full width

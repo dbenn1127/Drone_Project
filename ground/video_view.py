@@ -13,6 +13,11 @@ LISTEN = ("0.0.0.0", 5600)   # 0.0.0.0 = accept packets from any computer on the
 JETSON_IP = "192.168.4.26"    # ← NEW: the Jetson's address (hostname -I on the Jetson)
 DESIGNATE_PORT = 5602        # ← NEW: where designation commands go
 seq = 0                      # ← NEW: request counter; each click gets the next number
+pending_seq = None          # request number we are waiting on or None
+pending_since = 0.0         # when we sent it (for the 1 s timeout)
+status_text = "No target - click a person"  #status line shown on the video
+REPLY_TIMEOUT_S = 1.0       # no reply within this long = "click again"
+
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(LISTEN)
@@ -37,7 +42,7 @@ def newest_packet(s):
 
 def on_click(event, x, y, flags, param):
     """OpenCV calls this for every mouse event in the window. Left click = pick a person."""
-    global seq                                   # we CHANGE seq, so it needs global
+    global seq, pending_seq, pending_since, status_text                              # we CHANGE seq, so it needs global
     if event != cv2.EVENT_LBUTTONDOWN:
         return
     if not latest_boxes:
@@ -50,7 +55,11 @@ def on_click(event, x, y, flags, param):
             cmd = {"seq": seq, "designate": tid}
             sock.sendto(json.dumps(cmd).encode(), (JETSON_IP, DESIGNATE_PORT))
             print(f"sent: designate ID {tid} (request #{seq})")
+            pending_seq = seq
+            pending_since = time.time()
+            status_text = f"Pending: ID {tid}..."
             return
+
     print("no box there")
 
 fps, last = 0.0, time.perf_counter()
@@ -63,6 +72,18 @@ while True:
     box_data = newest_packet(box_sock)
     if box_data is not None:
         latest_boxes = json.loads(box_data)
+
+    if pending_seq is not None:
+        reply = latest_boxes.get("reply") if latest_boxes else None
+        if reply and reply["seq"] == pending_seq:
+            if reply["ok"]:
+                status_text = f"Tracking ID {reply['target']}"
+            else:
+                status_text = f"Rejected: {reply['reason']} - click again"
+            pending_seq = None
+        elif time.time() - pending_since > REPLY_TIMEOUT_S:
+            status_text = "No reply from drone - click again"
+            pending_seq = None
 
     data = newest_packet(sock)
     if data is None:
@@ -80,6 +101,8 @@ while True:
     last = now
     cv2.putText(frame, f"{fps:4.1f} FPS", (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, status_text, (10, 50),                 # ← NEW: under the FPS counter
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
     cv2.imshow("Ground view", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break

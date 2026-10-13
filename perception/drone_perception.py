@@ -74,10 +74,10 @@ while True:
                           tracker="bytetrack.yaml", verbose=False)
     boxes = results[0].boxes
 
-        # ← NEW: IDs the tracker sees in THIS frame
+        # IDs the tracker sees in THIS frame
     current_ids = boxes.id.int().tolist() if boxes.id is not None else []
 
-    # ← NEW: designation command from the ground? Check it, then ACK or NACK.
+    # designation command from the ground? Check it, then ACK or NACK.
     cmd = newest_command()
     if cmd is not None:
         if cmd["designate"] in current_ids:
@@ -88,6 +88,44 @@ while True:
             last_reply = {"seq": cmd["seq"], "ok": False,
                           "reason": f"ID {cmd['designate']} not in view"}
         print("designation:", last_reply)
+
+    # where is the designated target? (full-frame pixels, so use cx/fx from 1280)
+    bearing = None       # deg, + = right of center. None unless seen THIS frame
+    range_m = None       # meters, from box height
+    found = False
+    if target_id is not None and boxes.id is not None:
+        for (x1, y1, x2, y2), tid in zip(boxes.xyxy.tolist(), current_ids):
+            if tid == target_id:
+                u = (x1 + x2) / 2                                  # EST-1: box center column
+                bearing = math.degrees(math.atan((u - cx) / fx))
+                h_px = y2 - y1                                     # EST-2: box height
+                if h_px > 0:
+                    range_m = fx * PERSON_HEIGHT_M / h_px
+                found = True
+
+    # status for the follow logic (SAF-3)
+    #   none     = nobody designated
+    #   tracking = target seen this frame
+    #   lost     = missing less than LOST_TIMEOUT_S
+    #   hover    = missing longer -> operator must click again (PER-3: no substitutes)
+    if target_id is None:
+        status = "none"
+    elif found:
+        status = "tracking"
+        lost_since = None
+    else:
+        if lost_since is None:
+            lost_since = time.time()          # just went missing: start the clock
+        if time.time() - lost_since < LOST_TIMEOUT_S:
+            status = "lost"
+        else:
+            status = "hover"
+
+    # ← TEMP (6b test): once a second, show what we computed
+    if frame_no % 30 == 0:
+        b = f"{bearing:+.1f} deg" if bearing is not None else "-"
+        r = f"{range_m:.1f} m" if range_m is not None else "-"
+        print(f"{status:8}  bearing {b:>10}  range {r:>7}")
 
     # Shrink for sending; boxes must shrink by the same factor.
     small = cv2.resize(frame, (SEND_W, SEND_H))

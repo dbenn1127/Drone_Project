@@ -18,15 +18,25 @@ JPEG_QUALITY = 70
 MAX_UDP = 65000
 # ← NEW (part 6): perception message to the follow logic
 PERCEPTION_ADDR = (GROUND_IP, 5005)   # laptop for testing; PC (follow_sim) in 4.4
-HFOV_DEG = 62.2           # IMX219 horizontal field of view, deg. [TBR - see note]
+HFOV_DEG = 81.0          # IMX219 horizontal field of view, deg. [TBR - see note]
 PERSON_HEIGHT_M = 1.88    # EST-2: assumed target height (you, 6'2")
 LOST_TIMEOUT_S = 2.0      # SAF-3: lost this long -> hover
 
-GST = ( "nvarguscamerasrc sensor-id=0 ! "
-       "video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! "
-       "nvvidconv flip-method=2 ! video/x-raw,width=1280,height=720,format=BGRx ! "
-       "videoconvert ! video/x-raw,format=BGR ! "
-       "appsink drop=true max-buffers=1")                         # same pipeline as video_send.py, with flip-method=2
+# Camera pipelines. Pick one with GST = ... below.
+GST_IMX219 = ("nvarguscamerasrc sensor-id=0 ! "
+              "video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! "
+              "nvvidconv flip-method=2 ! video/x-raw,width=1280,height=720,format=BGRx ! "
+              "videoconvert ! video/x-raw,format=BGR ! "
+              "appsink drop=true max-buffers=1")
+
+# ← NEW: SIYI A8 mini over Ethernet. Stream is H.265 1280x720 @ 25 fps (gst-discoverer, 2026-10-14).
+GST_SIYI = ("rtspsrc location=rtsp://192.168.144.25:8554/main.264 latency=0 ! "
+            "rtph265depay ! h265parse ! nvv4l2decoder ! "        # unpack, tidy, HW decode
+            "nvvidconv ! video/x-raw,format=BGRx ! "
+            "videoconvert ! video/x-raw,format=BGR ! "
+            "appsink drop=true max-buffers=1")
+
+GST = GST_SIYI          # ← switch back to GST_IMX219 if needed                         # same pipeline as video_send.py, with flip-method=2
 
 model = YOLO("yolo11n.engine", task="detect")
 cap = cv2.VideoCapture(GST, cv2.CAP_GSTREAMER)

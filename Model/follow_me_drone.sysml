@@ -177,6 +177,16 @@ package FollowMeDrone {
         item def OperatorDesignation {
             doc /* Operator's choice of target person, sent from the GCS (PER-3). */
         }
+        item def GimbalCommand {
+            doc /* yaw and pitch sent to gimbal. */
+            attribute yaw : Real;    // deg, relative to gimbal base (drone nose), 0 = straight ahead, + direction [TBD]
+            attribute pitch : Real;  // deg, 0 = level, negative = down, positive = up
+        }
+        item def GimbalAttitude {
+            doc /* yaw and pitch of gimbal sent to companion computer */
+            attribute yaw : Real;    // deg, relative to gimbal base (drone nose), 0 = straight ahead, + direction [TBD]
+            attribute pitch : Real;  // deg, 0 = level, negative = down, positive = up
+        }
         item def StickCommands;
         item def MotorCommand;
         item def GNSSData;
@@ -197,6 +207,12 @@ package FollowMeDrone {
             in item status : TrackingStatus;
         }
         port def CSICameraPort { out item image : ImageFrame; }
+        port def EthernetCameraPort {
+            doc /* Ethernet to the SIYI A8 mini; video as RTSP H.265; gimbal control over the SIYI SDK, UDP 37260; camera side is the original. */
+            out item image : ImageFrame;
+            out item attitude : GimbalAttitude;
+            in item command : GimbalCommand;
+        }
         port def RCPort { out item sticks : StickCommands; }
         port def TelemetryRFPort {
             doc /* FC serial port to the air telemetry radio. */
@@ -247,6 +263,11 @@ package FollowMeDrone {
             doc /* 22-pin CSI ribbon, Arducam IMX219 -> Jetson Orin Nano. */
             end cameraEnd : CSICameraPort;
             end computerEnd : ~CSICameraPort;
+        }
+        interface def EthernetCameraLink {
+            doc /* the SIYI’s Ethernet-to-RJ45 cable, camera to the Jetson’s Ethernet port camera 192.168.144.25, Jetson 192.168.144.20 */
+            end cameraEnd : EthernetCameraPort;
+            end computerEnd : ~EthernetCameraPort;
         }
     }
 
@@ -407,10 +428,16 @@ package FollowMeDrone {
             port csi : ~CSICameraPort;
             port mavlink : ~MAVLinkPort;
             port power : PowerPort;
+            port eth : ~EthernetCameraPort;
         }
         part def ArducamIMX219 {
-            doc /* CSI camera, 80–120° FOV, 22-pin cable. */
+            doc /* CSI camera, 80–120° FOV, 22-pin cable. Desk/backup, not flown*/
             port csi : CSICameraPort;
+        }
+        part def SIYIA8Mini {
+            doc /* 3-axis gimbal camera, 81° HFOV, stream 1280×720 H.265 at 25 fps, 11–25.2 V input, flight camera. */
+            port eth : EthernetCameraPort;
+            port power : PowerPort;
         }
         part def CompanionRegulator {
             doc /* DC-DC converter from battery voltage to the Jetson's input voltage. Rating TBD. */
@@ -479,11 +506,11 @@ package FollowMeDrone {
         part def AutonomyPayload {
             doc /* Companion computer, camera, and its power regulator. Non-flight-critical by design. */
             part companion : JetsonOrinNanoSuper;
-            part camera : ArducamIMX219;
+            part camera : SIYIA8Mini;
             part regulator : CompanionRegulator;
 
-            interface : CSILink connect
-                cameraEnd ::> camera.csi to computerEnd ::> companion.csi;
+            interface : EthernetCameraLink connect
+                cameraEnd ::> camera.eth to computerEnd ::> companion.eth;
             connect regulator.vout to companion.power;
         }
 
@@ -525,6 +552,7 @@ package FollowMeDrone {
             connect powerSystem.powerModule.fcOut  to avionics.fc.power;
             connect powerSystem.powerModule.escOut to propulsion.esc.power;
             connect powerSystem.powerModule.auxOut to autonomy.regulator.vin;
+            connect powerSystem.powerModule.auxOut to autonomy.camera.power;
         }
 
         part def GroundSegment {

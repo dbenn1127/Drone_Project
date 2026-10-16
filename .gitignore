@@ -9,4 +9,3 @@ sim/*.csv
 sim/*.gif
 *.engine
 *.onnx
-learn/

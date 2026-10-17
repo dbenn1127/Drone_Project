@@ -30,6 +30,8 @@ package TandemUseCases {
         objective {
             doc /* Drone follows target and films until commanded to stop or target is lost.*/
         }
+        include use case adjust : AdjustFraming;
+        include use case pause : PauseFollowing;
     }
 
     use case def AdjustFraming {
@@ -69,5 +71,19 @@ package TandemUseCases {
         objective {
             doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot’s inputs. */
         }
+    }
+
+    use case def KeepPersonInView {
+    doc /* Keep a person I choose in view and follow them, with me approving every target decision. Pilot takeover (TakeManualControl) can interrupt at any time; not part of a normal session. */
+    subject tandem : TandemSystem;
+    actor operator : OperatorPilot;
+    actor target : Target;
+    objective {
+        doc /* the approved person stayed in view and followed; the system never switched to anyone the operator didn’t approve; the flight ended with the drone safely landed. */
+    }
+    include use case launch : LaunchDrone;
+    include use case acquire : AcquireTarget;
+    include use case film : FilmTarget;
+    include use case endFlight: EndFlight;
     }
 }

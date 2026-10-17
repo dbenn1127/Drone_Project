@@ -43,15 +43,31 @@ package TandemUseCases {
     }
 
     use case def PauseFollowing {
-
+            doc /* while filming target, operator can command to hold position. Gimbal still follows target and drone rotates as gimbal hits limit. Resume follow can be initiated manually by operator. */
+            subject tandem : TandemSystem;
+            actor operator : OperatorPilot;
+            actor target : Target;
+            objective {
+                doc /* Drone holds position. Gimbal and drone rotating to follow target as necessary */
+            }
     }
     
     use case def EndFlight {
+        doc /* While drone is in guided mode, during any action or state, the operator can command to end flight and return home or land in place. */
+        subject tandem : TandemSystem;
+        actor operator : OperatorPilot;
+        objective {
+            doc /* Drone returns to home and safely lands or lands in place. */
+        }
 
     }
 
     use case def TakeManualControl {
-
+        doc /* While drone is in guided mode, during any action or state, the operator can exit guided mode and take over via RC. */
+        subject tandem : TandemSystem;
+        actor operator : OperatorPilot;
+        objective {
+            doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot’s inputs. */
+        }
     }
-
 }

@@ -2,7 +2,18 @@ package TandemUseCases {
     private import Tandem::*;     // use everything defined in package Tandem
 
     use case def LaunchDrone {
-        doc /* Operator commands launch; the flight controller takes off and hovers.*/
+        doc /* Operator commands launch; the flight controller takes off and hovers at alunch altitude.*/
+        comment Preconditions /* prechecks passed and drone armed. */
+        comment MainFlow /*
+            1. Operator triggers launch.
+            2. Drone climbs.
+            3. Drone hovers at launch altitude.
+        */
+        comment AltFlows /*
+            A. Prechecks fail, arming refused and launch prevented, failures displayed to operator.
+            B. Any time: pilot takeover -> TakeManualControl
+        */
+        comment Assumptions /* A-3: Launch site is clear overhead and around the drone (operator responsibility)*/
         subject tandem: TandemSystem;
         actor operator : OperatorPilot;
         objective {
@@ -13,6 +24,23 @@ package TandemUseCases {
 
     use case def AcquireTarget{
         doc /* drone hovering, search triggered, target identified, target rejected or approved. Runs at start or when target is lost. */
+        comment MainFlow /*
+            1. Scan until persons are in view.
+            2. Show all persons to the operator.
+            3. Propose one person.
+            4. Operator approves.
+            5. Target is set.
+        */
+        comment AltFlows /*
+            A. Reject at 4, operator rejects -> propose another, or scan if none left in view.
+            B. Other pick: at 4, operator selects a different person -> approve that one.
+            C. None found: full scan finds no one -> keep scanning and alert operator.
+            D. Person walks out of view before operator decides -> Disappear as detected person; carry on.
+            E. Operator does not respond -> Keep waiting (never auto approve)
+            F. Approved person walks out of view at moment selection is made -> Treat as lost. Back to step 1.
+            G. Any time: pilot takeover -> TakeManualControl
+        */
+
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         actor target : Target;

@@ -2,7 +2,7 @@ package TandemUseCases {
     private import Tandem::*;     // use everything defined in package Tandem
 
     use case def LaunchDrone {
-        doc /* Operator commands launch; the flight controller takes off and hovers at alunch altitude.*/
+        doc /* Operator commands launch; Tandem takes off and hovers at alunch altitude.*/
         comment Preconditions /* prechecks passed and drone armed. */
         comment MainFlow /*
             1. Operator triggers launch.
@@ -52,6 +52,24 @@ package TandemUseCases {
 
     use case def FilmTarget{
         doc /* follow target and film based on commanded offsets until commanded to stop or target lost.*/
+        comment Preconditions /* Person approved as target.*/
+        comment MainFlow /*
+            1. Tandem tracks the target's position and direction of travel.
+            2. Drone moves to hold the offset (default 8m, 180deg, 6m height).
+            3. Camera keeps the target centered.
+            4. Repeats until the operator pauses or ends the flight.
+        */
+        comment AltFlows /*
+            A. Target stands still: drone holds its current position.
+            B. Target approaches the drone: keep-out zone applies (system-wide rule).
+            C. Target lost, or farther than 20 m: drone holds; exit to AcquireTarget.
+            D. Target outruns the drone (or drone stopped by geofence): distance grows; beyond 20 m -> C.
+            E. Another person overlaps the target: hold, highlight best guess, ask operator to re-confirm.
+            Confirm -> resume; other pick -> that person becomes target; no answer -> keep holding.
+            F. Operator adjusts framing -> AdjustFraming.
+            G. Operator pauses -> PauseFollowing.
+            H. Any time: pilot takeover -> TakeManualControl.
+        */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         actor target : Target;
@@ -64,6 +82,21 @@ package TandemUseCases {
 
     use case def AdjustFraming {
         doc /* While filming, operator can command a change to the offset. The drone gradually moves there without invading keepout zone.*/
+        comment Preconditions /* Tandem is filming target. */
+        comment MainFlow /*
+            1. Operator selects change offset/angle
+            2. Operator enters new values
+            3. Tandem confirms the new values were received
+            4. Drone moves gradually to the new offset
+            5. Drone settles at the new offset; following continues*/
+        comment AltFlows /*
+            A. Values out of range: not accepted; operator shown the allowed range; nothing sent
+            B. No confirmation (link problem) operator told the change was not received; offset unchanged
+            C. Path to new offset crosses the keep-out zone: drone goes around the target at >= 5m. 
+            D. Target lost during the move -> FilmTarget alt C.
+            E. Operator changes valuea again mid-move: newest command wins.
+            F. Any time: pilot takeover -> TakeManualControl.
+        */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         actor target : Target;
@@ -74,6 +107,22 @@ package TandemUseCases {
 
     use case def PauseFollowing {
             doc /* while filming target, operator can command to hold position. Gimbal still follows target and drone rotates as gimbal hits limit. Resume follow can be initiated manually by operator. */
+            comment Preconditions /* Drone is filming target. */
+            comment MainFlow /*
+                1. Operator selects pause follow.
+                2. Tandem confirms follow paused.
+                3. Drone hovers in place while camera follows target; drone rotates as necessary.
+                4. Operator selects resume.
+                5. Drone gradually returns to the offset; following continues.
+            */
+            comment AltFlows /*
+                A. Pause not confirmed (link pkrobem): operator told; drone keeps following.
+                B. Target walks out of view or farther than 20m: lost -> Acquire Target.
+                C. Target walks toward the drone: keep-out zona pplies (system-wide rule).
+                D. Another person overlaps the target: hold, ask operator to reconfirm (as FilmTarget E).
+                E. On resume, path back to the offset crosses the keep-out zone: drone gouse around at >= 5m.
+                F. Any time: pilot takeover -> TakeManualControl.
+            */
             subject tandem : TandemSystem;
             actor operator : OperatorPilot;
             actor target : Target;
@@ -83,7 +132,25 @@ package TandemUseCases {
     }
     
     use case def EndFlight {
-        doc /* While drone is in guided mode, during any action or state, the operator can command to end flight and return home or land in place. */
+        doc /* While Tandem is flying autonomously, during any action or state, the operator can command to end flight and return home or land in place. */
+        comment MainFlow /*
+            1. Operator selects end flight: RTL or land here.
+            2. Tandem confirms; the target is released.
+            3a. RTL: drone flies to the launch point at return altitude (6m [TBR]).
+            3b. Land here : (no travel)
+            4. Drone descends and lands.
+            5. Drone disarms.
+        */
+        comment AltFlows /*
+            A. No confirmation (link problem): operator told; pilot commands RTL or Land on the RC Switch.
+            B. Land here: camera points down during descent so the operator can see the landing spot; operator takes over if the spot is not celar.
+            C. GPS lost during RTL: Tandem lands in place.
+            D. Any time: pilot takeover -> TakeManualControl.
+        */
+        comment Assumptions /* 
+            A-4: Operator ensures the landing area is clear (Tandem has no downward obstacles sensing).
+            A-5: Tandem operates in open areas with no obstacles above follow height (6m).
+        */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         objective {
@@ -94,6 +161,17 @@ package TandemUseCases {
 
     use case def TakeManualControl {
         doc /* While drone is in guided mode, during any action or state, the operator can exit guided mode and take over via RC. */
+        comment Preconditions /* Pilot holding the RC; drone flying under Tandem's control. */
+        comment MainFlow /*
+            1. Pilot selects manual control on RC.
+            2. Flight controller changes mode; Tandem stops sending motion commands.
+            3. Drone holds position until the pilot moves the sticks.
+            4. Pilot flies the drone by RC.
+        */
+        comment AltFlows /*
+            A. RC link lost during manual flight : flight controller RC fialsafe (RTL or land).
+            B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves target).
+        */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         objective {
@@ -103,6 +181,18 @@ package TandemUseCases {
 
     use case def KeepPersonInView {
     doc /* Keep a person I choose in view and follow them, with me approving every target decision. Pilot takeover (TakeManualControl) can interrupt at any time; not part of a normal session. */
+    comment MainFlow /*
+        1. LaunchDrone
+        2. AcquireTarget
+        3. FilmTarget (operator may adjust framing or pause following)
+        4. EndFlight
+    */
+    comment AltFlows /*
+        A. Target lost during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed).
+        B. Any time: pilot takeover -> TakeManualControl (interrupts the mission).
+        C. Target heads past the operating area: drone holds at the soft fence; operator alerted; following resumes if the target returns (beyond 20m -> lost, alt A).
+        D. Any time: failsafe (battery, link loss, GPS) -> flight controller ends the flight.
+    */
     subject tandem : TandemSystem;
     actor operator : OperatorPilot;
     actor target : Target;

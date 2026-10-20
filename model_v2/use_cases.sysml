@@ -55,15 +55,16 @@ package TandemUseCases {
         comment Preconditions /* Person approved as target.*/
         comment MainFlow /*
             1. Tandem tracks the target's position and direction of travel.
-            2. Drone moves to hold the offset (default 8m, 180deg, 6m height).
+            2. Drone stays within the framing zone around the offset (default 8m, 180deg, 6m height).
             3. Camera keeps the target centered.
             4. Repeats until the operator pauses or ends the flight.
         */
         comment AltFlows /*
             A. Target stands still: drone holds its current position.
             B. Target approaches the drone: keep-out zone applies (system-wide rule).
-            C. Target lost, or farther than 20 m: drone holds; exit to AcquireTarget.
-            D. Target outruns the drone (or drone stopped by geofence): distance grows; beyond 20 m -> C.
+            C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget.
+            D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s,
+            operator alerted it is falling behind; if no longer seen -> C.
             E. Another person overlaps the target: hold, highlight best guess, ask operator to re-confirm.
             Confirm -> resume; other pick -> that person becomes target; no answer -> keep holding.
             F. Operator adjusts framing -> AdjustFraming.
@@ -92,8 +93,8 @@ package TandemUseCases {
         comment AltFlows /*
             A. Values out of range: not accepted; operator shown the allowed range; nothing sent
             B. No confirmation (link problem) operator told the change was not received; offset unchanged
-            C. Path to new offset crosses the keep-out zone: drone goes around the target at >= 5m. 
-            D. Target lost during the move -> FilmTarget alt C.
+            C. Target not seen for 2 s [TBR]: lost; drone holds; exit to AcquireTarget.
+            D. Target outruns the drone: drone keeps chasing at top speed; operator alerted it is falling behind; if no longer seen -> C.
             E. Operator changes valuea again mid-move: newest command wins.
             F. Any time: pilot takeover -> TakeManualControl.
         */
@@ -106,7 +107,7 @@ package TandemUseCases {
     }
 
     use case def PauseFollowing {
-            doc /* while filming target, operator can command to hold position. Gimbal still follows target and drone rotates as gimbal hits limit. Resume follow can be initiated manually by operator. */
+            doc /* while filming target, operator can command to hold position. Camera keeps following the target and drone rotates as camera hits limit. Resume follow can be initiated manually by operator. */
             comment Preconditions /* Drone is filming target. */
             comment MainFlow /*
                 1. Operator selects pause follow.
@@ -116,18 +117,18 @@ package TandemUseCases {
                 5. Drone gradually returns to the offset; following continues.
             */
             comment AltFlows /*
-                A. Pause not confirmed (link pkrobem): operator told; drone keeps following.
-                B. Target walks out of view or farther than 20m: lost -> Acquire Target.
-                C. Target walks toward the drone: keep-out zona pplies (system-wide rule).
+                A. Pause not confirmed (link problem): operator told; drone keeps following.
+                B. Target not seen for 2 s [TBR]: lost; operator alerted → AcquireTarget.
+                C. Target walks toward the drone: keep-out zone applies (system-wide rule).
                 D. Another person overlaps the target: hold, ask operator to reconfirm (as FilmTarget E).
-                E. On resume, path back to the offset crosses the keep-out zone: drone gouse around at >= 5m.
+                E. On resume, path back to the offset crosses the keep-out zone: drone goes around at >= 5m.
                 F. Any time: pilot takeover -> TakeManualControl.
             */
             subject tandem : TandemSystem;
             actor operator : OperatorPilot;
             actor target : Target;
             objective {
-                doc /* Drone holds position. Gimbal and drone rotating to follow target as necessary */
+                doc /* Drone holds position. Camera and drone rotating to follow target as necessary */
             }
     }
     
@@ -142,7 +143,7 @@ package TandemUseCases {
             5. Drone disarms.
         */
         comment AltFlows /*
-            A. No confirmation (link problem): operator told; pilot commands RTL or Land on the RC Switch.
+            A. No confirmation (link problem): operator told; select manual control on the RC and take over.
             B. Land here: camera points down during descent so the operator can see the landing spot; operator takes over if the spot is not celar.
             C. GPS lost during RTL: Tandem lands in place.
             D. Any time: pilot takeover -> TakeManualControl.
@@ -190,8 +191,8 @@ package TandemUseCases {
     comment AltFlows /*
         A. Target lost during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed).
         B. Any time: pilot takeover -> TakeManualControl (interrupts the mission).
-        C. Target heads past the operating area: drone holds at the soft fence; operator alerted; following resumes if the target returns (beyond 20m -> lost, alt A).
-        D. Any time: failsafe (battery, link loss, GPS) -> flight controller ends the flight.
+        C. Target heads past the operating area: drone holds at the soft fence; operator alerted; following resumes if the target returns (if no longer seen -> lost, alt A).
+        D. Any time: failsafe (battery, link loss, GPS) -> Tandem ends the flight.
     */
     subject tandem : TandemSystem;
     actor operator : OperatorPilot;

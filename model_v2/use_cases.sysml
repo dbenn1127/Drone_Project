@@ -74,34 +74,31 @@ package TandemUseCases {
     use case def FilmTarget{
         doc /* follow target and film based on commanded offsets until commanded to stop or target lost.*/
         comment Preconditions /* Person approved as target.*/
-        comment MainFlow /*
-            1. Tandem tracks the target's position and direction of travel.
-            2. Drone stays within the framing zone around the offset (default 8m, 180deg, 6m height).
-            3. Camera keeps the target centered.
-            4. Repeats until the operator pauses or ends the flight.
-        */
-        comment AltFlows /*
-            A. Target stands still: drone holds its current position.
-            B. Target approaches the drone: keep-out zone applies (system-wide rule).
-            C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget.
-            D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s,
-            operator alerted it is falling behind; if no longer seen -> C.
-            E. Another person overlaps the target: return to AcquireTarget.
-            Confirm -> resume; other pick -> that person becomes target; no answer -> keep holding.
-            F. Operator adjusts framing -> AdjustFraming.
-            G. Operator pauses -> PauseFollowing.
-            H. Any time: pilot takeover -> TakeManualControl.
-        */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         actor target : Target;
-        objective {
-            doc /* Drone follows target and films until commanded to stop or target is lost.*/
+        objective                   { doc /* Drone follows target and films until commanded to stop or target is lost.*/
         }
         include use case adjust : AdjustFraming;
         include use case pause : PauseFollowing;
-    }
 
+        // --- main flow ---
+        action trackTarget          { doc /* 1. Tandem tracks the target's position and direction of travel */}
+        action stayInZone           { doc /* 2. Drone stays within the framing zone around the offset (default 8m, 180deg, 6m height). */}
+        action keepCentered         { doc /* 3. Camera keeps the target centered. */}
+        action repeatUntilStopped   { doc /* 4. Repeats until the operator pauses or ends the flight. */}
+
+        // --- alternates ---
+        action targetStill          { doc /* A. Target stands still: drone holds its current position. */ }
+        action targetApproaches     { doc /* B. Target approaches the drone: keep-out zone applies (system-wide rule). */ }
+        action targetLost           { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
+        action fallingBehind        { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
+        action overlap              { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
+        action operatorAdjusts      { doc /* F. Operator adjusts framing -> AdjustFraming. */ }
+        action operatorPauses       { doc /* G. Operator pauses -> PauseFollowing. */ }
+        action pilotTakeover        { doc /* H. Any time: pilot takeover -> TakeManualControl. */ }
+    }
+    
     use case def AdjustFraming {
         doc /* While filming, operator can command a change to the offset. The drone gradually moves there without invading keepout zone.*/
         comment Preconditions /* Tandem is filming target. */

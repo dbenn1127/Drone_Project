@@ -232,6 +232,19 @@ package TandemRequirements {
             comment Rationale /* The operator needs to know what is allowed to correct the entry quickly. */
             comment Verify /* Demonstration */
         }
+
+        // --- traceability ---
+        private import TandemUseCases::*;
+        dependency from stayInFramingZone           to FilmTarget::stayInZone;
+        dependency from holdInsideZone              to FilmTarget::stayInZone;
+        dependency from keepTargetCentered          to FilmTarget::keepCentered;
+        dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;
+        dependency from freezeZoneWhenStationary    to FilmTarget::targetStill;
+        dependency from lostAfterNotSeen            to FilmTarget::targetLost;
+        dependency from returnToAcquisitionWhenLost to FilmTarget::targetLost;
+        dependency from alertOperatorWhenLost       to FilmTarget::targetLost;
+        dependency from alertFallingBehind          to FilmTarget::fallingBehind;
+        dependency from reacquireOnOverlap          to FilmTarget::overlap;
     }
     
     package PreFlight {

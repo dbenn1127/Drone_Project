@@ -1,6 +1,27 @@
 package TandemUseCases {
     private import Tandem::*;     // use everything defined in package Tandem
 
+    use case def PrepareForFlight {
+        doc /* Operator powers on and sets up Tandem; Tandem confirms it is ready and is armed for launch. */
+        subject tandem : TandemSystem;
+        actor operator : OperatorPilot;
+        objective {
+            doc /* Tandem is armed and ready to launch, with the following settings the operator chose. */
+        }
+        // --- main flow ---
+        action powerOn                  { doc /* 1. Operator powers on the drone, ground station, and RC. */}
+        action connectToGroundStation   { doc /* 2. Ground station connects to Tandem. */}
+        action runPrechecks             { doc /* 3. Tandem runs its prechecks (see PRE-1 definition) and reports ready when all pass. */ }
+        action setSettings              { doc /* 4. Tandem shows the current follow settings; operator changes them if needed and confirms. */ }
+        action arm                      { doc /* 5. Operator arms. Ready for LaunchDrone. */ }
+
+        // --- alternates ---
+        action noConnection             { doc /* A. Ground station cannot connect: operator told; Tandem does not report ready. */}
+        action notReady                 { doc /* B. Something not ready (e.g. GPS still acquiring, camera not found): Tandem shows what, and waits. */}
+        action invalidSetting           { doc /* C. Setting out of range: not accepted; allowed range shown. */}
+        action prechecksFail            { doc /* D/ Prechecks fail (e.g. battery too low): arming refused; failures shown. */}
+    }
+    
     use case def LaunchDrone {
         doc /* Operator commands launch; Tandem takes off and hovers at alunch altitude.*/
         comment Preconditions /* prechecks passed and drone armed. */
@@ -65,7 +86,7 @@ package TandemUseCases {
             C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget.
             D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s,
             operator alerted it is falling behind; if no longer seen -> C.
-            E. Another person overlaps the target: hold, highlight best guess, ask operator to re-confirm.
+            E. Another person overlaps the target: return to AcquireTarget.
             Confirm -> resume; other pick -> that person becomes target; no answer -> keep holding.
             F. Operator adjusts framing -> AdjustFraming.
             G. Operator pauses -> PauseFollowing.
@@ -120,7 +141,7 @@ package TandemUseCases {
                 A. Pause not confirmed (link problem): operator told; drone keeps following.
                 B. Target not seen for 2 s [TBR]: lost; operator alerted → AcquireTarget.
                 C. Target walks toward the drone: keep-out zone applies (system-wide rule).
-                D. Another person overlaps the target: hold, ask operator to reconfirm (as FilmTarget E).
+                D. Another person overlaps the target: return to AcquireTarget.
                 E. On resume, path back to the offset crosses the keep-out zone: drone goes around at >= 5m.
                 F. Any time: pilot takeover -> TakeManualControl.
             */

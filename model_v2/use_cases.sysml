@@ -167,23 +167,21 @@ package TandemUseCases {
     }
 
     use case def TakeManualControl {
-        doc /* While drone is in guided mode, during any action or state, the operator can exit guided mode and take over via RC. */
-        comment Preconditions /* Pilot holding the RC; drone flying under Tandem's control. */
-        comment MainFlow /*
-            1. Pilot selects manual control on RC.
-            2. Flight controller changes mode; Tandem stops sending motion commands.
-            3. Drone holds position until the pilot moves the sticks.
-            4. Pilot flies the drone by RC.
-        */
-        comment AltFlows /*
-            A. RC link lost during manual flight : flight controller RC fialsafe (RTL or land).
-            B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves target).
-        */
+        doc /* At any time, the pilot selects manual control on the RC and flies the drone; all autonomous movement stops. */
+        comment Preconditions /* Pilot holding the RC; drone flying under Tandem's autonomous control. */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
-        objective {
-            doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot’s inputs. */
-        }
+        objective               { doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot's inputs. */}
+
+        // --- main flow ---
+        action selectManual     { doc /* 1. Pilot selects manual control on the RC. */ }
+        action stopAutonomy     { doc /* 2. Tandem stops all autonomous movement. */ }
+        action holdUntilSticks  { doc /* 3. Drone holds position until the pilot gives stick inputs. */ }
+        action pilotFlies       { doc /* 4. Pilot flies the drone by RC. */ }
+
+        // --- alternates ---
+        action rcLinkLost       { doc /* A. RC link lost during manual flight: Tandem returns to launch or lands (RC-loss failsafe). */ }
+        action handBack         { doc /* B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves the target). */ }
     }
 
     use case def KeepPersonInView {

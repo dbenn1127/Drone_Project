@@ -16,14 +16,14 @@ package TandemRequirements {
         }
 
         requirement <'ACQ-3'> detectedPersonDisplay {
-            doc /* While no target is approved, Tandem shall display every person in view to the operator as selectable within 1s [TBR] of the person entering view.*/
+            doc /* During target acquisition, Tandem shall display every person in view to the operator as selectable within 1s [TBR] of the person entering view.*/
             subject tandem : TandemSystem;
             comment Rationale /* All detected persons presented to operator for target selection in a timely manner. */
             comment Verify /* Test */
         }
 
         requirement <'ACQ-4'> proposeOnePerson {
-            doc /* While no target is approved, Tandem shall propose one displayed person [selection rule TBD, e.g. nearest; after an overlap, the person Tandem judges most likely to be the previous target] for operator approval. */
+            doc /* During target acquisition, Tandem shall propose one displayed person [selection rule TBD, e.g. nearest; after an overlap, the person Tandem judges most likely to be the previous target] for operator approval. */
             subject tandem : TandemSystem;
             comment Rationale /* Gives most likely person based on selection rule to approve first. */
             comment Verify /* Test */
@@ -85,13 +85,33 @@ package TandemRequirements {
         }
 
         requirement <'ACQ-13'> holdPositionWhileAcquiring {
-            doc /* While no target is approved, Tandem shall hold position, moving only to rotate in place for scanning. */
+            doc /* During target acquisition, Tandem shall hold position, moving only to rotate in place for scanning. */
             subject tandem : TandemSystem;
             comment Rationale /* No unapproved movement before a target exists; keeps the drone predictable while the operator decides. */
             comment Verify /* Test */
         }
+
+        // --- traceability ---
+        private import TandemUseCases::*;
+        dependency from noFollowWithoutApproval     to AcquireTarget::operatorApproves;
+        dependency from noFollowWithoutApproval     to AcquireTarget::noResponse;
+        dependency from fullCircleSearch            to AcquireTarget::scanForPersons;
+        dependency from detectedPersonDisplay       to AcquireTarget::showPersons;
+        dependency from proposeOnePerson            to AcquireTarget::proposePerson;
+        dependency from noReproposeRejected         to AcquireTarget::reject;
+        dependency from proposeNextAfterReject      to AcquireTarget::reject;
+        dependency from approvedPersonBecomesTarget to AcquireTarget::targetSet;
+        dependency from approvedPersonBecomesTarget to AcquireTarget::otherPick;
+        dependency from confirmNewTarget            to AcquireTarget::targetSet;
+        dependency from alertNoPersonsFound         to AcquireTarget::noneFound;
+        dependency from removeDepartedPerson        to AcquireTarget::personLeaves;
+        dependency from refuseOutOfViewApproval     to AcquireTarget::approvedPersonLeaves;
+        dependency from explainRefusedApproval      to AcquireTarget::approvedPersonLeaves;
+        dependency from holdPositionWhileAcquiring  to AcquireTarget::holdPosition;
+
     }
-    package Launch {    
+    package Launch {   
+
         requirement <'LCH-1'> takeOffWhenArmed {
             doc /* When the operator commands launch while armed, Tandem shall take off.*/
             subject tandem : TandemSystem;
@@ -102,10 +122,15 @@ package TandemRequirements {
         requirement <'LCH-2'> reachLaunchAltitude {
             doc /* Tandem shall reach a launch altitude of 6m [TBR] +/- 1m [TBR] within 10s [TBR] of takeoff.*/
             subject tandem : TandemSystem;
-            comment Rationale /* Search starts from a known height with a good camera angle; the tolerance allows for noraml altitude-hodl wander. */
+            comment Rationale /* Search starts from a known height with a good camera angle; the tolerance allows for normal altitude-hold wander. */
             comment Verify /* Test */
         }
 
+        // --- traceability ---
+        private import TandemUseCases::*;
+        dependency from takeOffWhenArmed      to LaunchDrone::triggerLaunch;
+        dependency from reachLaunchAltitude   to LaunchDrone::climb;
+        dependency from reachLaunchAltitude   to LaunchDrone::hoverAtAltitude;
     }
     package Follow {
         requirement <'FLW-1'> stayInFramingZone {
@@ -143,7 +168,7 @@ package TandemRequirements {
         }
 
         requirement <'FLW-6'> noUnplannedFollowStop {
-            doc /* Tandem shall not stop or suspend following unless the target is lost, the operator pauses or ends the flight, the pilot takes manual control, or a failsafe triggers. */
+            doc /* Tandem shall not stop or suspend following unless the target is lost or overlapped by another person, the operator pauses or ends the flight, the pilot takes manual control, or a failsafe triggers. */
             subject tandem : TandemSystem;
             comment Rationale /* Following only ends by decisions or for safety, never by itself. */
             comment Verify /* Test */
@@ -159,14 +184,14 @@ package TandemRequirements {
         requirement <'FLW-8'> lostAfterNotSeen {
             doc /* Tandem shall treat the target as lost when it has not been seen for 2s [TBR]. */
             subject tandem : TandemSystem;
-            comment Rationale /* Brief gaps must not drop the target, but a target that's really gone must not be recognized so the drone stops acting on stale information.*/
+            comment Rationale /* Brief gaps must not drop the target, but a target that's really gone must be recognized so the drone stops acting on stale information.*/
             comment Verify /* Test */
         }
 
         requirement <'FLW-9'> returnToAcquisitionWhenLost {
             doc /* When the target is lost, Tandem shall return to target acquisition. */
             subject tandem : TandemSystem;
-            comment Rationale /* Losing the target mus tnever lead to following someone else unapproved; re-entering ecquisition reuses human approval path. */
+            comment Rationale /* Losing the target must never lead to following someone else unapproved; re-entering acquisition reuses human approval path. */
             comment Verify /* Test */
         }
 
@@ -177,7 +202,7 @@ package TandemRequirements {
             comment Verify /* Test */
         }
         requirement <'FLW-11'> alertFallingBehind {
-            doc /* When the drone has been farther than the configured distance plus 2m [TBR] for more than 3s [TBR], Tandem shall alert the opreator it is falling behind. */
+            doc /* When the drone has been farther than the configured distance plus 2m [TBR] for more than 3s [TBR], Tandem shall alert the operator it is falling behind. */
             subject tandem : TandemSystem;
             comment Rationale /* Gives the operator time to act before the target is lost. */
             comment Verify /* Test */
@@ -186,6 +211,7 @@ package TandemRequirements {
         requirement <'FLW-12'> reacquireOnOverlap {
             doc /* When another person overlaps the target in view, Tandem shall return to target acquisition. */
             subject tandem : TandemSystem;
+            comment Definition /* Overlap: another person's box covers more than 30% [TBR] of the target's box for at least 0.5 s [TBR]. */
             comment Rationale /* Tandem cannot detect an identity swap itself, so it asks the operator to re-approve whenever a swap is possible. */
             comment Verify /* Test*/
         }
@@ -225,7 +251,7 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-        requirement <'FLW-20'> resume {
+        requirement <'FLW-20'> resumeSameTarget {
             doc /* When the operator commands resume, Tandem shall resume following the current target without re-approval. */
             subject tandem : TandemSystem;
             comment Rationale /* The target was tracked throughout the pause, so asking the operator to re-approve would add a step with no safety benefit. */
@@ -250,10 +276,8 @@ package TandemRequirements {
         dependency from limitCameraToTargetDistance to AdjustFraming::outOfRange;
         dependency from rejectOutOfRangeSettings    to AdjustFraming::outOfRange;
         dependency from showAllowedRange            to AdjustFraming::outOfRange;
-        dependency from confirmSettingsReceived     to AdjustFraming::confirmReceived;
-        dependency from alertSettingsNotApplied     to AdjustFraming::notReceived;
         dependency from gradualRepositioning        to AdjustFraming::moveGradually;
-        dependency from newestSettingsWin           to AdjustFraming::newestWins;
+        dependency from newestSettingsWins          to AdjustFraming::newestWins;
 
         dependency from rejectOutOfRangeSettings    to PrepareForFlight::invalidSetting;
         dependency from showAllowedRange            to PrepareForFlight::invalidSetting;
@@ -262,15 +286,18 @@ package TandemRequirements {
         dependency from resumeSameTarget            to PauseFollowing::returnToZone;
         dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
         dependency from gradualRepositioning        to PauseFollowing::returnToZone;
+        dependency from holdOnPause                 to PauseFollowing::selectPause;
+        dependency from holdOnPause                 to PauseFollowing::holdAndTrack;
+        dependency from reacquireOnOverlap          to PauseFollowing::overlap;
     }
     
     package PreFlight {
         requirement <'PRE-1'> readyOnlyWhenPrechecksPass {
             doc /* Tandem shall not report ready unless all prechecks pass. */
             subject tandem : TandemSystem;
-            comment Definition /* Precheks: ground-statin link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks. */
-            comment Rationale /**/
-            comment Verify /**/
+            comment Definition /* Prechecks: ground-station link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks. */
+            comment Rationale /* Never fly with a known fault or without a way for the pilot to take over. */
+            comment Verify /* Test */
         }
 
         requirement <'PRE-2'> noArmOnFailedPrechecks {
@@ -292,6 +319,16 @@ package TandemRequirements {
             comment Rationale /* Prevents flying on the settings left over from a previous flight without the operator noticing. */
             comment Verify /* Test */
         }
+
+        // --- traceability ---
+        private import TandemUseCases::*;
+        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::runPrechecks;
+        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::noConnection;
+        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::notReady;
+        dependency from noArmOnFailedPrechecks      to PrepareForFlight::prechecksFail;
+        dependency from showPrecheckFailures        to PrepareForFlight::prechecksFail;
+        dependency from showPrecheckFailures        to PrepareForFlight::notReady;
+        dependency from confirmSettingsBeforeArming to PrepareForFlight::setSettings;
     }
 
     package CrossCutting {
@@ -315,12 +352,14 @@ package TandemRequirements {
         dependency from confirmOperatorCommands     to PauseFollowing::confirmPaused;
         dependency from alertCommandNotApplied      to AdjustFraming::notReceived;
         dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
+        dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
+        dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
     }
 
-    package EndFlight {
+    package End {
         
         requirement <'END-1'> returnToLaunchPoint {
-            doc /*When the operator commands return to launch, Tandem shall fly to within 2m of the launch point at the return altitude (6m [TBR]). */
+            doc /*When the operator commands return to launch, Tandem shall fly to within 2m [TBR] of the launch point at the return altitude (6m [TBR]). */
             subject tandem : TandemSystem;
             comment Rationale /* Brings the drone back to where the operator is, at a height known to be clear. */
             comment Verify /* Test */
@@ -362,9 +401,9 @@ package TandemRequirements {
         }
 
         requirement <'END-7'> alertPersonBelow {
-            doc /* When Tandem stops a descent because a person is beneath it, tandem shall alert the operator within 1s [TBR]. */
+            doc /* When Tandem stops a descent because a person is beneath it, Tandem shall alert the operator within 1s [TBR]. */
             subject tandem : TandemSystem;
-            comment Rationale /* The operator needs to know why the landing stoppedm so they can decide what to do. */
+            comment Rationale /* The operator needs to know why the landing stopped so they can decide what to do. */
             comment Verify /* Test */
         }
 
@@ -376,7 +415,7 @@ package TandemRequirements {
         }
 
         requirement <'END-9'> alertPositionLost {
-            doc /* When tandem lands in place because its position was lost, Tandem shall alert the operator within 1s [TBR]. */
+            doc /* When Tandem lands in place because its position was lost, Tandem shall alert the operator within 1s [TBR]. */
             subject tandem : TandemSystem;
             comment Rationale /* The pilot can still fly by RC without position and may prefer to bring the drone back manually. */
             comment Verify /* Test */
@@ -395,14 +434,52 @@ package TandemRequirements {
         dependency from landIfPositionLost  to EndFlight::positionLost;
         dependency from alertPositionLost to EndFlight::positionLost;
     }
+    package ManualControl {
+
+        requirement <'MAN-1'> manualOverrideStopsAutonomy {
+            doc /* In any flight state, when the pilot selects manual control on the RC, Tandem shall stop all autonomous  movement within 0.5s [TBR]. */
+            subject tandem : TandemSystem;
+            comment Rationale /* A human must always be able to take control immediately; at top speed, 0.5s limits uncommanded travel to about 2.5m. */
+            comment Verify /* Test */
+        }
+
+        requirement <'MAN-2'> holdUntilStickInput {
+            doc /* After the pilot takes manual control, Tandem shall hold position until it receives stick input from the RC. */
+            subject tandem : TandemSystem;
+            comment Rationale /* The drone stays put after a takeover, so the pilot isn't caught out by drift while getting oriented. */
+            comment Verify /* Test */
+        }
         
-package Constraints {
+        requirement <'MAN-3'> manualControlOnly {
+            doc /* While under manual control, Tandem shall move the drone only in response to operator input, except when a failsafe triggers. */
+            subject tandem : TandemSystem;
+            comment Rationale /* Once a human has taken over, nothing else may move the drone except a safety response to a lost link. */
+            comment Verify /* Test */
+        }
+
+        requirement <'MAN-4'> reacquireAfterHandBack {
+            doc /* When the pilot hands control back to Tandem, Tandem shall return to target acquisition. */
+            subject tandem : TandemSystem;
+            comment Rationale /* The pilot may have moved the drone during manual flight, so the target must be re-approved before Tandem follows anyone. */
+            comment Verify /* Test */
+        }
+
+        //--- Traceability ---
+        private import TandemUseCases::*;
+        dependency from manualOverrideStopsAutonomy to TakeManualControl::selectManual;
+        dependency from manualOverrideStopsAutonomy to TakeManualControl::stopAutonomy;
+        dependency from holdUntilStickInput         to TakeManualControl::holdUntilSticks;
+        dependency from manualControlOnly           to TakeManualControl::pilotFlies;
+        dependency from reacquireAfterHandBack      to TakeManualControl::handBack;
+    } 
+
+    package Constraints {
 
         requirement <'CON-1'> limitDescentRate {
             doc /* When landing, Tandem shall descend at no more than 0.6 m/s [TBR]. */
             subject tandem : TandemSystem;
             comment Rationale /* A slow descent gives the operator time to watch the spot and take over, and gives Tandem time to spot a person below. */
-            comment Verify /**/
+            comment Verify /* Test */
         }
 
         requirement <'CON-2'> {
@@ -415,22 +492,8 @@ package Constraints {
     // ---- Traceability ----
         private import TandemUseCases::*;
         dependency from limitDescentRate    to EndFlight::descendAndLand;
-}
-        requirement <''> {
-            doc /**/
-            subject tandem : TandemSystem;
-            comment Source /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
+    }
 
-        requirement <''> {
-            doc /**/
-            subject tandem : TandemSystem;
-            comment Source /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
 
         requirement <''> {
             doc /**/

@@ -1,5 +1,54 @@
 package TandemRequirements {
     private import Tandem::*;
+        package PreFlight {
+        requirement <'PRE-1'> readyOnlyWhenPrechecksPass {
+            doc /* Tandem shall not report ready unless all prechecks pass. */
+            subject tandem : TandemSystem;
+            comment Definition /* Prechecks: ground-station link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks. */
+            comment Rationale /* Never fly with a known fault or without a way for the pilot to take over. */
+            comment Verify /* Test */
+        }
+
+        requirement <'PRE-2'> noArmOnFailedPrechecks {
+            doc /*When prechecks fail, Tandem shall refuse to arm. */
+            subject tandem : TandemSystem;
+            comment Rationale /* Never fly with a known fault. */
+            comment Verify /* Test */
+        }
+
+        requirement <'PRE-3'> showPrecheckFailures {
+            doc /* When prechecks fail, Tandem shall display precheck failures to the operator. */
+            subject tandem : TandemSystem;
+            comment Rationale /* The operator needs to know what to fix. */
+            comment Verify /* Demonstration */
+        }
+        requirement <'PRE-4'> confirmSettingsBeforeArming {
+            doc /* Tandem shall not arm until the operator has confirmed the follow settings. */
+            subject tandem : TandemSystem;
+            comment Rationale /* Prevents flying on the settings left over from a previous flight without the operator noticing. */
+            comment Verify /* Test */
+        }
+
+    }
+
+    package Launch {   
+
+        requirement <'LCH-1'> takeOffWhenArmed {
+            doc /* When the operator commands launch while armed, Tandem shall take off.*/
+            subject tandem : TandemSystem;
+            comment Rationale /* Launch only happens through two deliberate operator actions: arm then command. */
+            comment Verify /* Test */
+        }
+
+        requirement <'LCH-2'> reachLaunchAltitude {
+            doc /* Tandem shall reach a launch altitude of 6m [TBR] +/- 1m [TBR] within 10s [TBR] of takeoff.*/
+            subject tandem : TandemSystem;
+            comment Rationale /* Search starts from a known height with a good camera angle; the tolerance allows for normal altitude-hold wander. */
+            comment Verify /* Test */
+        }
+
+    }
+
     package Acquire {
         requirement <'ACQ-1'> noFollowWithoutApproval {
             doc /* Tandem shall not begin following a person until the operator has approved that person. */
@@ -91,47 +140,8 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-        // --- traceability ---
-        private import TandemUseCases::*;
-        dependency from noFollowWithoutApproval     to AcquireTarget::operatorApproves;
-        dependency from noFollowWithoutApproval     to AcquireTarget::noResponse;
-        dependency from fullCircleSearch            to AcquireTarget::scanForPersons;
-        dependency from detectedPersonDisplay       to AcquireTarget::showPersons;
-        dependency from proposeOnePerson            to AcquireTarget::proposePerson;
-        dependency from noReproposeRejected         to AcquireTarget::reject;
-        dependency from proposeNextAfterReject      to AcquireTarget::reject;
-        dependency from approvedPersonBecomesTarget to AcquireTarget::targetSet;
-        dependency from approvedPersonBecomesTarget to AcquireTarget::otherPick;
-        dependency from confirmNewTarget            to AcquireTarget::targetSet;
-        dependency from alertNoPersonsFound         to AcquireTarget::noneFound;
-        dependency from removeDepartedPerson        to AcquireTarget::personLeaves;
-        dependency from refuseOutOfViewApproval     to AcquireTarget::approvedPersonLeaves;
-        dependency from explainRefusedApproval      to AcquireTarget::approvedPersonLeaves;
-        dependency from holdPositionWhileAcquiring  to AcquireTarget::holdPosition;
-
     }
-    package Launch {   
 
-        requirement <'LCH-1'> takeOffWhenArmed {
-            doc /* When the operator commands launch while armed, Tandem shall take off.*/
-            subject tandem : TandemSystem;
-            comment Rationale /* Launch only happens through two deliberate operator actions: arm then command. */
-            comment Verify /* Test */
-        }
-
-        requirement <'LCH-2'> reachLaunchAltitude {
-            doc /* Tandem shall reach a launch altitude of 6m [TBR] +/- 1m [TBR] within 10s [TBR] of takeoff.*/
-            subject tandem : TandemSystem;
-            comment Rationale /* Search starts from a known height with a good camera angle; the tolerance allows for normal altitude-hold wander. */
-            comment Verify /* Test */
-        }
-
-        // --- traceability ---
-        private import TandemUseCases::*;
-        dependency from takeOffWhenArmed      to LaunchDrone::triggerLaunch;
-        dependency from reachLaunchAltitude   to LaunchDrone::climb;
-        dependency from reachLaunchAltitude   to LaunchDrone::hoverAtAltitude;
-    }
     package Follow {
         requirement <'FLW-1'> stayInFramingZone {
             doc /* While following a target moving at up to 3 m/s [TBR], Tandem shall keep the drone within the configured framing zone (distance ±2 m [TBR]). */
@@ -258,104 +268,8 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-
-        // --- traceability ---
-        private import TandemUseCases::*;
-        dependency from stayInFramingZone           to FilmTarget::stayInZone;
-        dependency from holdInsideZone              to FilmTarget::stayInZone;
-        dependency from keepTargetCentered          to FilmTarget::keepCentered;
-        dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;
-        dependency from freezeZoneWhenStationary    to FilmTarget::targetStill;
-        dependency from lostAfterNotSeen            to FilmTarget::targetLost;
-        dependency from returnToAcquisitionWhenLost to FilmTarget::targetLost;
-        dependency from alertOperatorWhenLost       to FilmTarget::targetLost;
-        dependency from alertFallingBehind          to FilmTarget::fallingBehind;
-        dependency from reacquireOnOverlap          to FilmTarget::overlap;
-
-        dependency from configurableFollowSettings  to AdjustFraming::enterValues;
-        dependency from limitCameraToTargetDistance to AdjustFraming::outOfRange;
-        dependency from rejectOutOfRangeSettings    to AdjustFraming::outOfRange;
-        dependency from showAllowedRange            to AdjustFraming::outOfRange;
-        dependency from gradualRepositioning        to AdjustFraming::moveGradually;
-        dependency from newestSettingsWins          to AdjustFraming::newestWins;
-
-        dependency from rejectOutOfRangeSettings    to PrepareForFlight::invalidSetting;
-        dependency from showAllowedRange            to PrepareForFlight::invalidSetting;
-
-        dependency from resumeSameTarget            to PauseFollowing::selectResume;
-        dependency from resumeSameTarget            to PauseFollowing::returnToZone;
-        dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
-        dependency from gradualRepositioning        to PauseFollowing::returnToZone;
-        dependency from holdOnPause                 to PauseFollowing::selectPause;
-        dependency from holdOnPause                 to PauseFollowing::holdAndTrack;
-        dependency from reacquireOnOverlap          to PauseFollowing::overlap;
     }
     
-    package PreFlight {
-        requirement <'PRE-1'> readyOnlyWhenPrechecksPass {
-            doc /* Tandem shall not report ready unless all prechecks pass. */
-            subject tandem : TandemSystem;
-            comment Definition /* Prechecks: ground-station link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks. */
-            comment Rationale /* Never fly with a known fault or without a way for the pilot to take over. */
-            comment Verify /* Test */
-        }
-
-        requirement <'PRE-2'> noArmOnFailedPrechecks {
-            doc /*When prechecks fail, Tandem shall refuse to arm. */
-            subject tandem : TandemSystem;
-            comment Rationale /* Never fly with a known fault. */
-            comment Verify /* Test */
-        }
-
-        requirement <'PRE-3'> showPrecheckFailures {
-            doc /* When prechecks fail, Tandem shall display precheck failures to the operator. */
-            subject tandem : TandemSystem;
-            comment Rationale /* The operator needs to know what to fix. */
-            comment Verify /* Demonstration */
-        }
-        requirement <'PRE-4'> confirmSettingsBeforeArming {
-            doc /* Tandem shall not arm until the operator has confirmed the follow settings. */
-            subject tandem : TandemSystem;
-            comment Rationale /* Prevents flying on the settings left over from a previous flight without the operator noticing. */
-            comment Verify /* Test */
-        }
-
-        // --- traceability ---
-        private import TandemUseCases::*;
-        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::runPrechecks;
-        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::noConnection;
-        dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::notReady;
-        dependency from noArmOnFailedPrechecks      to PrepareForFlight::prechecksFail;
-        dependency from showPrecheckFailures        to PrepareForFlight::prechecksFail;
-        dependency from showPrecheckFailures        to PrepareForFlight::notReady;
-        dependency from confirmSettingsBeforeArming to PrepareForFlight::setSettings;
-    }
-
-    package CrossCutting {
-        private import TandemUseCases::*;
-
-        requirement <'XC-1'> confirmOperatorCommands {
-            doc /* Tandem shall confirm each operator command to the operator within 1 s [TBR]. */
-            subject tandem : TandemSystem;
-            comment Rationale /* The operator must always know whether a command took effect. */
-            comment Verify /* Test */
-        }
-        requirement <'XC-2'> alertCommandNotApplied {
-            doc /* When an operator command is not confirmed within 1 s [TBR], Tandem shall tell the operator it was not applied. */
-            subject tandem : TandemSystem;
-            comment Rationale /* The operator must never assume a command took effect when it did not. */
-            comment Verify /* Test */
-        }
-
-        // --- traceability ---
-        dependency from confirmOperatorCommands     to AdjustFraming::confirmReceived;
-        dependency from confirmOperatorCommands     to PauseFollowing::confirmPaused;
-        dependency from alertCommandNotApplied      to AdjustFraming::notReceived;
-        dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
-        dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
-        dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
-    }
-
     package End {
         
         requirement <'END-1'> returnToLaunchPoint {
@@ -420,19 +334,7 @@ package TandemRequirements {
             comment Rationale /* The pilot can still fly by RC without position and may prefer to bring the drone back manually. */
             comment Verify /* Test */
         }
-        //--- Traceability ---
-        private import TandemUseCases::*;
-        dependency from returnToLaunchPoint to EndFlight::selectEndFlight;
-        dependency from returnToLaunchPoint to EndFlight::returnToLaunch;
-        dependency from landInPlace         to EndFlight::selectEndFlight;
-        dependency from landInPlace         to EndFlight::landHere;
-        dependency from releaseTargetOnEnd  to EndFlight::confirmEnd;
-        dependency from disarmAfterLanding  to EndFlight::disarm;
-        dependency from showLandingSpot     to EndFlight::watchLandingSpot;
-        dependency from holdIfPersonBelow   to EndFlight::personBelow;
-        dependency from alertPersonBelow    to EndFlight::personBelow;
-        dependency from landIfPositionLost  to EndFlight::positionLost;
-        dependency from alertPositionLost to EndFlight::positionLost;
+
     }
     package ManualControl {
 
@@ -464,14 +366,25 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-        //--- Traceability ---
-        private import TandemUseCases::*;
-        dependency from manualOverrideStopsAutonomy to TakeManualControl::selectManual;
-        dependency from manualOverrideStopsAutonomy to TakeManualControl::stopAutonomy;
-        dependency from holdUntilStickInput         to TakeManualControl::holdUntilSticks;
-        dependency from manualControlOnly           to TakeManualControl::pilotFlies;
-        dependency from reacquireAfterHandBack      to TakeManualControl::handBack;
     } 
+
+    package CrossCutting {
+
+        requirement <'XC-1'> confirmOperatorCommands {
+            doc /* Tandem shall confirm each operator command to the operator within 1 s [TBR]. */
+            subject tandem : TandemSystem;
+            comment Rationale /* The operator must always know whether a command took effect. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-2'> alertCommandNotApplied {
+            doc /* When an operator command is not confirmed within 1 s [TBR], Tandem shall tell the operator it was not applied. */
+            subject tandem : TandemSystem;
+            comment Rationale /* The operator must never assume a command took effect when it did not. */
+            comment Verify /* Test */
+        }
+
+    }
 
     package Constraints {
 
@@ -489,9 +402,6 @@ package TandemRequirements {
             comment Verify /**/
         }
 
-    // ---- Traceability ----
-        private import TandemUseCases::*;
-        dependency from limitDescentRate    to EndFlight::descendAndLand;
     }
 
 

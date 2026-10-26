@@ -3,6 +3,7 @@ package TandemViews {
     private import TandemRequirements::*;
 
     view requirementsView : GeneralView {
-        expose TandemRequirements::**;            // show everything in the requirements package
+        expose TandemRequirements::**;  
+        expose TandemTraceability::**;          // show everything in the requirements package
     }
 }

@@ -1,13 +1,14 @@
 package TandemTraceability {
-    
+
     private import TandemUseCases::*;
-    private import TandemRequirements::Acquire::*;
-    private import TandemRequirements::Launch::*;
-    private import TandemRequirements::Follow::*;
+
     private import TandemRequirements::PreFlight::*;
-    private import TandemRequirements::CrossCutting::*;
+    private import TandemRequirements::Launch::*;
+    private import TandemRequirements::Acquire::*;
+    private import TandemRequirements::Follow::*;
     private import TandemRequirements::End::*;
     private import TandemRequirements::ManualControl::*;
+    private import TandemRequirements::CrossCutting::*;
     private import TandemRequirements::Constraints::*;
 
     // ---- PreFlight ----

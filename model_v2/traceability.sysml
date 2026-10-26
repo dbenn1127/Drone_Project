@@ -102,5 +102,8 @@ package TandemTraceability {
 
     // ---- Constraints ----
     dependency from limitDescentRate            to EndFlight::descendAndLand;
+    dependency from limitHorizontalSpeed        to FilmTarget::stayInZone;
+    dependency from limitHorizontalSpeed        to FilmTarget::fallingBehind;
+    dependency from limitHorizontalSpeed        to EndFlight::returnToLaunch;
 
 }

@@ -1,7 +1,5 @@
 package TandemTraceability {
-
     private import TandemUseCases::*;
-
     private import TandemRequirements::PreFlight::*;
     private import TandemRequirements::Launch::*;
     private import TandemRequirements::Acquire::*;
@@ -45,32 +43,31 @@ package TandemTraceability {
     // ---- Follow ----
     dependency from stayInFramingZone           to FilmTarget::stayInZone;
     dependency from holdInsideZone              to FilmTarget::stayInZone;
+    dependency from configurableFollowSettings  to AdjustFraming::enterValues;
+    dependency from limitCameraToTargetDistance to AdjustFraming::outOfRange;
     dependency from keepTargetCentered          to FilmTarget::keepCentered;
+    dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
     dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;
     dependency from freezeZoneWhenStationary    to FilmTarget::targetStill;
     dependency from lostAfterNotSeen            to FilmTarget::targetLost;
     dependency from returnToAcquisitionWhenLost to FilmTarget::targetLost;
+    dependency from returnToAcquisitionWhenLost to KeepPersonInView::targetLost;
     dependency from alertOperatorWhenLost       to FilmTarget::targetLost;
     dependency from alertFallingBehind          to FilmTarget::fallingBehind;
     dependency from reacquireOnOverlap          to FilmTarget::overlap;
-
-    dependency from configurableFollowSettings  to AdjustFraming::enterValues;
-    dependency from limitCameraToTargetDistance to AdjustFraming::outOfRange;
+    dependency from reacquireOnOverlap          to PauseFollowing::overlap;
+    dependency from reacquireOnOverlap          to KeepPersonInView::targetLost;
     dependency from rejectOutOfRangeSettings    to AdjustFraming::outOfRange;
-    dependency from showAllowedRange            to AdjustFraming::outOfRange;
-    dependency from gradualRepositioning        to AdjustFraming::moveGradually;
-    dependency from newestSettingsWins          to AdjustFraming::newestWins;
-
     dependency from rejectOutOfRangeSettings    to PrepareForFlight::invalidSetting;
+    dependency from showAllowedRange            to AdjustFraming::outOfRange;
     dependency from showAllowedRange            to PrepareForFlight::invalidSetting;
-
-    dependency from resumeSameTarget            to PauseFollowing::selectResume;
-    dependency from resumeSameTarget            to PauseFollowing::returnToZone;
-    dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
+    dependency from gradualRepositioning        to AdjustFraming::moveGradually;
     dependency from gradualRepositioning        to PauseFollowing::returnToZone;
+    dependency from newestSettingsWins          to AdjustFraming::newestWins;
     dependency from holdOnPause                 to PauseFollowing::selectPause;
     dependency from holdOnPause                 to PauseFollowing::holdAndTrack;
-    dependency from reacquireOnOverlap          to PauseFollowing::overlap;
+    dependency from resumeSameTarget            to PauseFollowing::selectResume;
+    dependency from resumeSameTarget            to PauseFollowing::returnToZone;
 
     // ---- End ----
     dependency from returnToLaunchPoint         to EndFlight::selectEndFlight;
@@ -82,33 +79,56 @@ package TandemTraceability {
     dependency from showLandingSpot             to EndFlight::watchLandingSpot;
     dependency from holdIfPersonBelow           to EndFlight::personBelow;
     dependency from alertPersonBelow            to EndFlight::personBelow;
-    dependency from gpsLossLand                 to EndFlight::positionLost;
-    dependency from gpsLossAdviseTakeover       to EndFlight::positionLost;
 
     // ---- ManualControl ----
     dependency from manualOverrideStopsAutonomy to TakeManualControl::selectManual;
     dependency from manualOverrideStopsAutonomy to TakeManualControl::stopAutonomy;
+    dependency from manualOverrideStopsAutonomy to KeepPersonInView::pilotTakeover;
     dependency from holdUntilStickInput         to TakeManualControl::holdUntilSticks;
     dependency from manualControlOnly           to TakeManualControl::pilotFlies;
     dependency from reacquireAfterHandBack      to TakeManualControl::handBack;
+    dependency from manualOverrideStopsAutonomy to PauseFollowing::pilotTakeover;
 
     // ---- CrossCutting ----
+    // XC-1/2: command confirmation
     dependency from confirmOperatorCommands     to AdjustFraming::confirmReceived;
     dependency from confirmOperatorCommands     to PauseFollowing::confirmPaused;
+    dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
     dependency from alertCommandNotApplied      to AdjustFraming::notReceived;
     dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
-    dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
     dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
+
+    // XC-3/4: keep-out zone
     dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
     dependency from respectKeepOutZone          to AdjustFraming::pathCrossesKeepOut;
     dependency from respectKeepOutZone          to PauseFollowing::resumePathCrossesKeepOut;
     dependency from holdWhileTargetInside       to FilmTarget::targetApproaches;
     dependency from holdWhileTargetInside       to PauseFollowing::targetApproaches;
 
+    // XC-5/6: geofence
+    dependency from stayInsideGeofence          to KeepPersonInView::reachesGeofence;
+    dependency from alertAtGeofence             to KeepPersonInView::reachesGeofence;
+
+    // XC-7..14: failsafes
+    dependency from lowBatteryReturn            to KeepPersonInView::lowBattery;
+    dependency from criticalBatteryLand         to KeepPersonInView::criticalBattery;
+    dependency from groundLinkLossHold          to KeepPersonInView::groundLinkLost;
+    dependency from groundLinkLossReturn        to KeepPersonInView::groundLinkLost;
+    dependency from rcLinkLossReturn            to KeepPersonInView::rcLinkLost;
+    dependency from rcLinkLossReturn            to TakeManualControl::rcLinkLost;
+    dependency from gpsLossLand                 to KeepPersonInView::gpsLost;
+    dependency from gpsLossLand                 to EndFlight::positionLost;
+    dependency from gpsLossAdviseTakeover       to KeepPersonInView::gpsLost;
+    dependency from gpsLossAdviseTakeover       to EndFlight::positionLost;
+    dependency from alertOnFailsafe             to KeepPersonInView::lowBattery;
+    dependency from alertOnFailsafe             to KeepPersonInView::criticalBattery;
+    dependency from alertOnFailsafe             to KeepPersonInView::groundLinkLost;
+    dependency from alertOnFailsafe             to KeepPersonInView::rcLinkLost;
+    dependency from alertOnFailsafe             to KeepPersonInView::gpsLost;
+
     // ---- Constraints ----
     dependency from limitDescentRate            to EndFlight::descendAndLand;
     dependency from limitHorizontalSpeed        to FilmTarget::stayInZone;
     dependency from limitHorizontalSpeed        to FilmTarget::fallingBehind;
     dependency from limitHorizontalSpeed        to EndFlight::returnToLaunch;
-
 }

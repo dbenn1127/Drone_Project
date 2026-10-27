@@ -377,14 +377,14 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-        requirement <'XC-11'> RCLinkLossReturn : TandemRequirement {
+        requirement <'XC-11'> rcLinkLossReturn : TandemRequirement {
             doc /* When RC connection is lost, Tandem shall return to launch. */
             comment Definition /* RC link lost: no signal from the RC transmitter for 1s [TBR]. */
             comment Rationale /* Without RC, the pilot can no longer take over, so the drone stops relying on anything else and comes home. */
             comment Verify /* Test */
         }
 
-        requirement <'XC-12'> gpsLostLand : TandemRequirement {
+        requirement <'XC-12'> gpsLossLand : TandemRequirement {
             doc /*When GPS position is lost, Tandem shall land in place. */
             comment Definition /* GPS position lost: no valid position for 2s [TBR]. */
             comment Rationale /* Without position the drone cannot hold, return, or respect the geofence; landing ends the drift, and the pilot can still take over and fly it back by rC. */

@@ -5,9 +5,7 @@ package TandemUseCases {
         doc /* Operator powers on and sets up Tandem; Tandem confirms it is ready and is armed for launch. */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
-        objective {
-            doc /* Tandem is armed and ready to launch, with the following settings the operator chose. */
-        }
+        objective                       { doc /* Tandem is armed and ready to launch, with the following settings the operator chose. */}
         // --- main flow ---
         action powerOn                  { doc /* 1. Operator powers on the drone, ground station, and RC. */}
         action connectToGroundStation   { doc /* 2. Ground station connects to Tandem. */}
@@ -39,7 +37,7 @@ package TandemUseCases {
         action pilotTakeover            { doc /* A. Any time: pilot takeover -> TakeManualControl. */ }
     }
 
- use case def AcquireTarget {
+    use case def AcquireTarget {
         doc /* Tandem finds persons, proposes one, and the operator approves a target. Runs at the start and whenever the target is lost. */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
@@ -67,7 +65,7 @@ package TandemUseCases {
     }
 
     use case def FilmTarget{
-        doc /* follow target and film based on commanded offsets until commanded to stop or target lost.*/
+        doc /* Follow target and film based on commanded offsets until commanded to stop or target lost.*/
         comment Preconditions /* Person approved as target.*/
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
@@ -77,14 +75,14 @@ package TandemUseCases {
         include use case pause : PauseFollowing;
 
         // --- main flow ---
-        action trackTarget          { doc /* 1. Tandem tracks the target's position and direction of travel */}
+        action trackTarget          { doc /* 1. Tandem tracks the target's position and direction of travel. */}
         action stayInZone           { doc /* 2. Drone stays within the framing zone around the offset (default 8m, 180deg, 6m height). */}
         action keepCentered         { doc /* 3. Camera keeps the target centered. */}
         action repeatUntilStopped   { doc /* 4. Repeats until the operator pauses or ends the flight. */}
 
         // --- alternates ---
         action targetStill          { doc /* A. Target stands still: drone holds its current position. */ }
-        action targetApproaches     { doc /* B. Target approaches the drone: keep-out zone applies (system-wide rule). */ }
+        action targetApproaches     { doc /* B. Target walks into the keep-out zone: drone holds position until they leave. */ }
         action targetLost           { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
         action fallingBehind        { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
         action overlap              { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
@@ -118,7 +116,7 @@ package TandemUseCases {
     }
 
     use case def PauseFollowing {
-        doc /* while filming target, operator can command to hold position. Camera keeps following the target and drone rotates as camera hits limit. Resume follow can be initiated manually by operator. */
+        doc /* While filming target, operator can command to hold position. Camera keeps following the target and drone rotates as camera hits limit. Resume follow can be initiated manually by operator. */
         comment Preconditions /* Drone is filming target. */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
@@ -135,16 +133,17 @@ package TandemUseCases {
         // --- alternates ---
         action pauseNotConfirmed        { doc /* A. Pause not confirmed (link problem): operator told; drone keeps following. */ }
         action targetLost               { doc /* B. Target not seen for 2 s [TBR]: lost; operator alerted -> AcquireTarget. */ }
-        action targetApproaches         { doc /* C. Target walks toward the drone: keep-out zone applies (system-wide rule). */ }
+        action targetApproaches         { doc /* C. Target walks into the keep-out zone: drone holds position until they leave. */ }
         action overlap                  { doc /* D. Another person overlaps the target -> AcquireTarget. */ }
-        action resumePathCrossesKeepOut { doc /* E. On resume, path back crosses the keep-out. */}
+        action resumePathCrossesKeepOut { doc /* E. On resume, path back crosses the keep-out zone: drone goes around the target at >= 5 m. */}
+        action pilotTakeover            { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
     }
     
     use case def EndFlight {
         doc /* While Tandem is flying autonomously, the operator commands it to return to launch or land in place. */
         comment Assumptions /*
             A-4: Operator ensures the landing area is clear (Tandem has no downward obstacle sensing).
-            A-5: Tandem operates in open areas with no obstacles above follow height (6 m).
+            A-5: Tandem operates in open areas with no obstacles taller than the height it is flying at (the follow height, or the return altitude during return to launch).
         */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
@@ -162,7 +161,7 @@ package TandemUseCases {
         action notConfirmed         { doc /* A. No confirmation (link problem): operator told; pilot commands return or land on the RC. */ }
         action watchLandingSpot     { doc /* B. During descent the camera shows the landing spot; operator takes over if it is not clear. */ }
         action personBelow          { doc /* C. Person detected beneath the drone during descent: descent stops; operator alerted. */ }
-        action positionLost         { doc /* D. Position lost during return: drone lands in place, operator alerted. */ }
+        action positionLost         { doc /* D. D. Position lost during return: drone lands in place; operator alerted and advised to take over. */ }
         action pilotTakeover        { doc /* E. Any time: pilot takeover -> TakeManualControl. */ }
     }
 
@@ -180,33 +179,30 @@ package TandemUseCases {
         action pilotFlies       { doc /* 4. Pilot flies the drone by RC. */ }
 
         // --- alternates ---
-        action rcLinkLost       { doc /* A. RC link lost during manual flight: Tandem returns to launch or lands (RC-loss failsafe). */ }
+        action rcLinkLost       { doc /* A. RC link lost during manual flight: Tandem returns to launch (RC-loss failsafe). */ }
         action handBack         { doc /* B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves the target). */ }
     }
 
     use case def KeepPersonInView {
-    doc /* Keep a person I choose in view and follow them, with me approving every target decision. Pilot takeover (TakeManualControl) can interrupt at any time; not part of a normal session. */
-    comment MainFlow /*
-        1. LaunchDrone
-        2. AcquireTarget
-        3. FilmTarget (operator may adjust framing or pause following)
-        4. EndFlight
-    */
-    comment AltFlows /*
-        A. Target lost during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed).
-        B. Any time: pilot takeover -> TakeManualControl (interrupts the mission).
-        C. Target heads past the operating area: drone holds at the soft fence; operator alerted; following resumes if the target returns (if no longer seen -> lost, alt A).
-        D. Any time: failsafe (battery, link loss, GPS) -> Tandem ends the flight.
-    */
-    subject tandem : TandemSystem;
-    actor operator : OperatorPilot;
-    actor target : Target;
-    objective {
-        doc /* the approved person stayed in view and followed; the system never switched to anyone the operator didn’t approve; the flight ended with the drone safely landed. */
-    }
-    include use case launch : LaunchDrone;
-    include use case acquire : AcquireTarget;
-    include use case film : FilmTarget;
-    include use case endFlight: EndFlight;
+        doc /* Keep a person I choose in view and follow them, with me approving every target decision. Main flow: PrepareForFlight -> LaunchDrone -> AcquireTarget -> FilmTarget (operator may adjust or pause) -> EndFlight. */
+        subject tandem : TandemSystem;
+        actor operator : OperatorPilot;
+        actor target : Target;
+        objective               { doc /* The approved person stayed in view and was followed; Tandem never switched to anyone the operator didn't approve; the flight ended with the drone safely landed. */}
+        include use case prepare : PrepareForFlight;
+        include use case launch : LaunchDrone;
+        include use case acquire : AcquireTarget;
+        include use case film : FilmTarget;
+        include use case endFlight : EndFlight;
+
+        // --- alternates ---
+        action targetLost       { doc /* A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). */ }
+        action pilotTakeover    { doc /* B. Any time: pilot takeover -> TakeManualControl. */ }
+        action reachesGeofence  { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
+        action lowBattery       { doc /* D. Any time: low battery -> return to launch; operator alerted. */ }
+        action criticalBattery  { doc /* E. Any time: critical battery -> land in place; operator alerted. */ }
+        action groundLinkLost   { doc /* F. Any time: ground link lost -> hold; return to launch if not restored within 10 s. If restored, keep holding until the operator resumes. */ }
+        action rcLinkLost       { doc /* G. Any time: RC link lost -> return to launch; operator alerted. */ }
+        action gpsLost          { doc /* H. Any time: GPS lost -> land in place; operator alerted and advised to take over. */ }
     }
 }

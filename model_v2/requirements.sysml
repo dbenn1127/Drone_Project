@@ -339,6 +339,19 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
+        requirement <'XC-3'> respectKeepOutZone : TandemRequirement {
+            doc /* Tandem shall not move the drone into the target's keep-out zone. */
+            comment Definition /* Keep-out zone: horizontal distance from the target of less than 5m [TBR]. */
+            comment Rationale /* Keeps the drone a safe margin from the person it is working with; Tandem only moves where it can see. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-4'> holdWhileTargetInside : TandemRequirement {
+            doc /* While the target is inside the keep-out zone, Tandem shall hold position.  */
+            comment Rationale /* Backing away would fly the drone into space the camera is not watching; holding is safer until obstacle sensing exists. */
+            comment Verify /* Test */
+        }
+
     }
 
     package Constraints {
@@ -358,70 +371,60 @@ package TandemRequirements {
     }
 
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-
-        requirement <''> {
-            doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-        requirement <''> {
-            doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
+            comment Rationale /**/
+            comment Verify /**/
+        }
+        requirement <''> : TandemRequirement {
+            doc /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
             comment Rationale /**/
             comment Verify /**/
         }
 
-        requirement <''> {
+        requirement <''> : TandemRequirement {
             doc /**/
-            comment Source /**/
+            comment Rationale /**/
+            comment Verify /**/
+        }
+
+        requirement <''> : TandemRequirement {
+            doc /**/
             comment Rationale /**/
             comment Verify /**/
         }

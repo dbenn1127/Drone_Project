@@ -99,6 +99,11 @@ package TandemTraceability {
     dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
     dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
     dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
+        dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
+    dependency from respectKeepOutZone          to AdjustFraming::pathCrossesKeepOut;
+    dependency from respectKeepOutZone          to PauseFollowing::resumePathCrossesKeepOut;
+    dependency from holdWhileTargetInside       to FilmTarget::targetApproaches;
+    dependency from holdWhileTargetInside       to PauseFollowing::targetApproaches;
 
     // ---- Constraints ----
     dependency from limitDescentRate            to EndFlight::descendAndLand;

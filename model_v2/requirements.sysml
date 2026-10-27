@@ -284,18 +284,6 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
-        requirement <'END-8'> landIfPositionLost : TandemRequirement {
-            doc /* If Tandem loses its position during a return to launch, Tandem shall land in place. */
-            comment Rationale /* Without a position the drone cannot find the launch point; landing slowly where it is, is the safest option. */
-            comment Verify /* Test */
-        }
-
-        requirement <'END-9'> alertPositionLost : TandemRequirement {
-            doc /* When Tandem lands in place because its position was lost, Tandem shall alert the operator within 1s [TBR]. */
-            comment Rationale /* The pilot can still fly by RC without position and may prefer to bring the drone back manually. */
-            comment Verify /* Test */
-        }
-
     }
     package ManualControl {
 
@@ -349,6 +337,70 @@ package TandemRequirements {
         requirement <'XC-4'> holdWhileTargetInside : TandemRequirement {
             doc /* While the target is inside the keep-out zone, Tandem shall hold position.  */
             comment Rationale /* Backing away would fly the drone into space the camera is not watching; holding is safer until obstacle sensing exists. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-5'> stayInsideGeofence : TandemRequirement {
+            doc /* Tandem shall not move the drone outside the geofence. */
+            comment Definition /* Geofence: 100 m [TBR] horizontal radius around the launch point, up to 20 m [TBR] above the launch point. */
+            comment Rationale /* Keeps the drone within reliable video control range and inside the area the operator has checked for bystanders. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-6'> alertAtGeofence : TandemRequirement {
+            doc /* When the drone reaches the geofence, Tandem shall alert the operator within 1s [TBR]. */
+            comment Rationale /* The operator needs to know why the drone stopped so they can bring the target back or end the flight. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-7'> lowBatteryReturn : TandemRequirement {
+            doc /* When the remaining battery reaches 25% [TBR], Tandem shall return to launch. */
+            comment Rationale /* Returns with enough charge to land safely and keep the pack above its healthy minimum (~20%). */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-8'> criticalBatteryLand : TandemRequirement {
+            doc /* When the remaining battery level reaches 10% [TBR], Tandem shall land in place. */
+            comment Rationale /* At this level something is wrong; landing now is safer than risking power loss on the way home. */
+            comment Verify /* Test */
+        }
+        requirement <'XC-9'> groundLinkLossHold : TandemRequirement {
+            doc /* When the ground link is lost, Tandem shall hold position. */
+            comment Definition /* Ground link lost: no data received from the ground station for 5s [TBR]. */
+            comment Rationale /* The operator cannot see the video not approve anything, so the drone stops acting on its own. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-10'> groundLinkLossReturn : TandemRequirement {
+            doc /* If ground link is not re-established within 10s [TBR] of loss, Tandem shall return to launch. */
+            comment Rationale /* A short dropout should not end the flight, but a lasting one means the operator has lost oversight. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-11'> RCLinkLossReturn : TandemRequirement {
+            doc /* When RC connection is lost, Tandem shall return to launch. */
+            comment Definition /* RC link lost: no signal from the RC transmitter for 1s [TBR]. */
+            comment Rationale /* Without RC, the pilot can no longer take over, so the drone stops relying on anything else and comes home. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-12'> gpsLostLand : TandemRequirement {
+            doc /*When GPS position is lost, Tandem shall land in place. */
+            comment Definition /* GPS position lost: no valid position for 2s [TBR]. */
+            comment Rationale /* Without position the drone cannot hold, return, or respect the geofence; landing ends the drift, and the pilot can still take over and fly it back by rC. */
+            comment Verify /* Test */
+        }
+
+        requirement <'XC-13'> gpsLossAdviseTakeover : TandemRequirement {
+            doc /* When GPS position is lost, Tandem shall advise the operator to take manual control. */
+            comment Rationale /* Tandem cannot fly home without position, but the pilot can, using the RC and line of sight along with camera video. */
+            comment Verify /* Demonstration */
+        }
+
+        requirement <'XC-14'> alertOnFailsafe : TandemRequirement {
+            doc /* When a failsafe triggers, Tandem shall alert the operator within 1s [TBR], stating which failsafe. */
+            comment Definition /* Failsafes: low battery, critical battery, ground link lost, RC link lost, GPS lost. */
+            comment Rationale /* The operator must know why the drone stopped doing what they asked. */
             comment Verify /* Test */
         }
 

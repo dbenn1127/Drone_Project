@@ -82,8 +82,8 @@ package TandemTraceability {
     dependency from showLandingSpot             to EndFlight::watchLandingSpot;
     dependency from holdIfPersonBelow           to EndFlight::personBelow;
     dependency from alertPersonBelow            to EndFlight::personBelow;
-    dependency from landIfPositionLost          to EndFlight::positionLost;
-    dependency from alertPositionLost           to EndFlight::positionLost;
+    dependency from gpsLossLand                 to EndFlight::positionLost;
+    dependency from gpsLossAdviseTakeover       to EndFlight::positionLost;
 
     // ---- ManualControl ----
     dependency from manualOverrideStopsAutonomy to TakeManualControl::selectManual;
@@ -99,7 +99,7 @@ package TandemTraceability {
     dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
     dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
     dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
-        dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
+    dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
     dependency from respectKeepOutZone          to AdjustFraming::pathCrossesKeepOut;
     dependency from respectKeepOutZone          to PauseFollowing::resumePathCrossesKeepOut;
     dependency from holdWhileTargetInside       to FilmTarget::targetApproaches;

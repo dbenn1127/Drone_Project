@@ -20,6 +20,7 @@ Example applications: filming a person on foot, overwatch for a hiker or runner,
 - **A-4**: The landing area is clear of people and obstacles. Tandem only sees beneath it during descent; the operator confirms the spot.
 - **A-5**: Tandem is flown in open areas with no obstacles above 6 m [TBR] (the return altitude).
 - **A-6**: Tandem does not sense obstacles in any direction, and only detects people within the camera view. The operator flies only where bystanders are sparse and keeps the drone clear of obstacles and people, taking over if needed.
+- **A-7**: The operator and ground station stay within 50 m [TBR] of the launch point during flight.
 
 ## Normal flight
 0. **Prepare**: operator powers on the drone, ground station and RC. Tandem runs its prechecks (ground link, RC link, GPS, camera, battery, flight-safety checks) and reports ready only when all pass, showing anything that fails. Tandem shows the follow settings (left over from the last flight, or defaults); the operator changes them if needed and confirms. Only then can the operator arm.

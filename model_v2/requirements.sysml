@@ -367,7 +367,7 @@ package TandemRequirements {
         requirement <'XC-9'> groundLinkLossHold : TandemRequirement {
             doc /* When the ground link is lost, Tandem shall hold position. */
             comment Definition /* Ground link lost: no data received from the ground station for 5s [TBR]. */
-            comment Rationale /* The operator cannot see the video not approve anything, so the drone stops acting on its own. */
+            comment Rationale /* The operator cannot see the video nor approve anything, so the drone stops acting on its own. */
             comment Verify /* Test */
         }
 
@@ -387,7 +387,7 @@ package TandemRequirements {
         requirement <'XC-12'> gpsLossLand : TandemRequirement {
             doc /*When GPS position is lost, Tandem shall land in place. */
             comment Definition /* GPS position lost: no valid position for 2s [TBR]. */
-            comment Rationale /* Without position the drone cannot hold, return, or respect the geofence; landing ends the drift, and the pilot can still take over and fly it back by rC. */
+            comment Rationale /* Without position the drone cannot hold, return, or respect the geofence; landing ends the drift, and the pilot can still take over and fly it back by RC. */
             comment Verify /* Test */
         }
 
@@ -402,6 +402,12 @@ package TandemRequirements {
             comment Definition /* Failsafes: low battery, critical battery, ground link lost, RC link lost, GPS lost. */
             comment Rationale /* The operator must know why the drone stopped doing what they asked. */
             comment Verify /* Test */
+        }
+
+        requirement <'XC-15'> holdAfterLinkRestored : TandemRequirement {
+            doc /* When the ground link is restored after a loss, Tandem shall hold position until the operator commands resume. */
+            comment Rationale /* The operator may have missed what happened during the dropout; following only restarts when they choose. */
+            comment Verify /* Demonstration */
         }
 
     }
@@ -419,65 +425,47 @@ package TandemRequirements {
             comment Rationale /* Bounds how far the drone can travel before the pilot or a failsafe can react; the stopping distances in END-2 and MAN-1 assume this speed. */
             comment Verify /* Test */
         }
+        requirement <'CON-3'> broadcastRemoteID : TandemRequirement {
+            doc /* Tandem shall broadcast Remote ID from takeoff to shutdown. */
+            comment Rationale /* Required by FAA Part 89 for registered drones over 250g. */
+            comment Verify /* Demonstration */
+        }
 
     }
 
+    package Performance {
 
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
+        requirement <'PRF-1'> detectionRange : TandemRequirement {
+            doc /* Under nominal conditions, Tandem shall detect a person at a distance of up to 20m [TBR] camera-to-target in at least 90% [TBR] of video frames. */
+            comment Definition /* Nominal conditions: daylight, no precipitation, wind up to 5m/s [TBR], an adult standing or walking, not hidden behind objects or other people. */
+            comment Rationale /* Sets the detection limit that FLW-4's 20m settings limit depends on; at this rate brief misses never add up to a lost target (FLW-8). */
+            comment Verify /* Test */
         }
-
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
+        
+        requirement <'PRF-2'> commandResponseTime : TandemRequirement {
+            doc /* Anywhere inside the geofence, Tandem shall begin acting on an operator command within 0.5s [TBR] of the operator sending it.  */
+            comment Rationale /* Sets the command latency assumed in END-2's landing error budget; a slow response near a person or the fence adds distance travelled. */
+            comment Verify /* Test */
         }
 
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
+        requirement <'PRF-3'> followEndurance : TandemRequirement {
+            doc /* Under nominal conditions, starting from a full battery, Tandem shall be able to follow a target for at least 8 minutes [TBR] before the low-battery return (XC-7) triggers. */
+            comment Rationale /* Long enough for a useful session; the power budget estimates about 10 min of flight above the 25% reserve. */
+            comment Verify /* Analysis, Test */
         }
 
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
+        requirement <'PRF-4'> videoRange : TandemRequirement {
+            doc /* Under nominal conditions, Tandem shall provide usable video to the operator at up to 150m [TBR] from the ground control station. */
+            comment Definition /* Usable video: at least 1280x720 [TBR], at least 20fps [TBR], no freeze longer than 1s [TBR]. */
+            comment Rationale /* With the ground station within 50 m of launch (A-7), video reaches every point inside the 100 m geofence. */
+            comment Verify /* Test */
         }
 
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
+        requirement <'PRF-5'> videoLatency : TandemRequirement {
+            doc /*Under nominal conditions, within video range (PRF-4), Tandem shall provide video to the operator with a latency of no more than 500ms. */
+            comment Definition /* Latency: glass-to-glass, from an event in front of the camera to it appearing on the ground station display. */
+            comment Rationale /* The operator decides to take over based on the video; at top speed, 0.5s of lag means the drone is already at 2.5m further than what they see. */
+            comment Verify /* Test (short range), Analysis (at range) */
         }
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-
-        requirement <''> : TandemRequirement {
-            doc /**/
-            comment Rationale /**/
-            comment Verify /**/
-        }
-}
+    }
+ }

@@ -6,4 +6,7 @@ package TandemViews {
         expose TandemRequirements::**;  
         expose TandemTraceability::**;          // show everything in the requirements package
     }
+    view traceMatrix : GridView {
+        expose TandemTraceability::*;
+    }
 }

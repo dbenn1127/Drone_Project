@@ -8,6 +8,7 @@ package TandemTraceability {
     private import TandemRequirements::ManualControl::*;
     private import TandemRequirements::CrossCutting::*;
     private import TandemRequirements::Constraints::*;
+    private import TandemRequirements::Performance::*;
 
     // ---- PreFlight ----
     dependency from readyOnlyWhenPrechecksPass  to PrepareForFlight::runPrechecks;
@@ -51,6 +52,9 @@ package TandemTraceability {
     dependency from freezeZoneWhenStationary    to FilmTarget::targetStill;
     dependency from lostAfterNotSeen            to FilmTarget::targetLost;
     dependency from returnToAcquisitionWhenLost to FilmTarget::targetLost;
+    dependency from freezeZoneWhenStationary    to PauseFollowing::targetLost;
+    dependency from lostAfterNotSeen            to PauseFollowing::targetLost;
+    dependency from returnToAcquisitionWhenLost to PauseFollowing::targetLost;
     dependency from returnToAcquisitionWhenLost to KeepPersonInView::targetLost;
     dependency from alertOperatorWhenLost       to FilmTarget::targetLost;
     dependency from alertFallingBehind          to FilmTarget::fallingBehind;
@@ -88,6 +92,11 @@ package TandemTraceability {
     dependency from manualControlOnly           to TakeManualControl::pilotFlies;
     dependency from reacquireAfterHandBack      to TakeManualControl::handBack;
     dependency from manualOverrideStopsAutonomy to PauseFollowing::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to LaunchDrone::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to AcquireTarget::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to FilmTarget::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to AdjustFraming::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to EndFlight::pilotTakeover;
 
     // ---- CrossCutting ----
     // XC-1/2: command confirmation
@@ -97,6 +106,7 @@ package TandemTraceability {
     dependency from alertCommandNotApplied      to AdjustFraming::notReceived;
     dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
     dependency from alertCommandNotApplied      to EndFlight::notConfirmed;
+    dependency from holdAfterLinkRestored       to KeepPersonInView::groundLinkLost;
 
     // XC-3/4: keep-out zone
     dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
@@ -131,4 +141,16 @@ package TandemTraceability {
     dependency from limitHorizontalSpeed        to FilmTarget::stayInZone;
     dependency from limitHorizontalSpeed        to FilmTarget::fallingBehind;
     dependency from limitHorizontalSpeed        to EndFlight::returnToLaunch;
+    dependency from broadcastRemoteID           to KeepPersonInView;
+
+    // --- Performance ---
+    dependency from detectionRange              to AcquireTarget::scanForPersons;
+    dependency from detectionRange              to FilmTarget::trackTarget;
+    dependency from commandResponseTime         to AdjustFraming::confirmReceived;
+    dependency from commandResponseTime         to PauseFollowing::confirmPaused;
+    dependency from commandResponseTime         to EndFlight::confirmEnd;
+    dependency from followEndurance             to KeepPersonInView;
+    dependency from videoRange                  to KeepPersonInView;
+    dependency from videoLatency                to KeepPersonInView;
+    dependency from videoLatency                to EndFlight::watchLandingSpot;
 }

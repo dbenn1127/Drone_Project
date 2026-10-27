@@ -161,7 +161,7 @@ package TandemUseCases {
         action notConfirmed         { doc /* A. No confirmation (link problem): operator told; pilot commands return or land on the RC. */ }
         action watchLandingSpot     { doc /* B. During descent the camera shows the landing spot; operator takes over if it is not clear. */ }
         action personBelow          { doc /* C. Person detected beneath the drone during descent: descent stops; operator alerted. */ }
-        action positionLost         { doc /* D. D. Position lost during return: drone lands in place; operator alerted and advised to take over. */ }
+        action positionLost         { doc /* D. Position lost during return: drone lands in place; operator alerted and advised to take over. */ }
         action pilotTakeover        { doc /* E. Any time: pilot takeover -> TakeManualControl. */ }
     }
 

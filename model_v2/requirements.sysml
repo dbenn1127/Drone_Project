@@ -47,6 +47,12 @@ package TandemRequirements {
             comment Verify /* Test */
         }
 
+        requirement <'LCH-3'> alertAltitudeNotReached : TandemRequirement {
+            doc /* When launch altitude is not reached within 10s [TBR] Tandem shall alert the operator. */
+            comment Rationale /* A drone stucj below launch altitude is safe but not working as expected; the operator should know now, not when the battery runs low. */
+            comment Verify /* Test */
+        }
+
     }
 
     package Acquire {

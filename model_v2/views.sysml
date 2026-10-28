@@ -9,4 +9,5 @@ package TandemViews {
     view traceMatrix : GridView {
         expose TandemTraceability::*;
     }
+    view acquireFlow : ActionFlowView { expose TandemUseCases::AcquireTarget; }
 }

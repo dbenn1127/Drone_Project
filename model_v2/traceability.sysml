@@ -23,6 +23,7 @@ package TandemTraceability {
     dependency from takeOffWhenArmed            to LaunchDrone::triggerLaunch;
     dependency from reachLaunchAltitude         to LaunchDrone::climb;
     dependency from reachLaunchAltitude         to LaunchDrone::hoverAtAltitude;
+    dependency from alertAltitudeNotReached     to LaunchDrone::altitudeNotReached;
 
     // ---- Acquire ----
     dependency from noFollowWithoutApproval     to AcquireTarget::operatorApproves;

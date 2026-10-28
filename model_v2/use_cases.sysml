@@ -18,6 +18,33 @@ package TandemUseCases {
         action notReady                 { doc /* B. Something not ready (e.g. GPS still acquiring, camera not found): Tandem shows what, and waits. */}
         action invalidSetting           { doc /* C. Setting out of range: not accepted; allowed range shown. */}
         action prechecksFail            { doc /* D. Prechecks fail (e.g. battery too low): arming refused; failures shown. */}
+
+        // --- attributes ---
+        attribute connected : ScalarValues::Boolean;
+        attribute allReady : ScalarValues::Boolean;
+        attribute faultFound : ScalarValues::Boolean;
+        attribute settingsConfirmed : ScalarValues::Boolean;
+        attribute settingsValid : ScalarValues::Boolean;
+
+        //--- behavior ---
+        first start;
+        then powerOn;
+        then loop action connecting {
+            perform connectToGroundStation;
+            if not connected { perform noConnection; }
+        } until connected;
+        then loop action precheck {
+            perform runPrechecks;
+            if faultFound { perform prechecksFail; }
+            if not allReady and not faultFound { perform notReady; }
+        } until allReeady;
+        then loop action settingUp {
+            perform setSettings;
+            if not settingsValid { perform invalidSetting; }
+        } until settingsConfirmed;
+        then arm;
+        then done;
+
     }
     
     use case def LaunchDrone {
@@ -35,6 +62,21 @@ package TandemUseCases {
 
         // --- alternates ---
         action pilotTakeover            { doc /* A. Any time: pilot takeover -> TakeManualControl. */ }
+        action altitudeNotReached       { doc /* B. Launch altitude not reached within 10 s [TBR]: drone holds; operator alerted. */ }
+
+        // --- attributes ---
+        attribute altitudeReached : ScalarValues::Boolean;
+        attribute climbTimedOut : ScalarValues::Boolean;    // 10s [TBR], see LCH-3
+
+        // --- behavior ---
+        first start;
+        then triggerLaunch;
+        then loop action climbing {
+            perform climb;
+        } until altitudeReached or climbTimedOut;
+        then if climbTimedOut { perform altitudeNotReached; }
+        then hoverAtAltitude;
+        then done;
     }
 
     use case def AcquireTarget {
@@ -62,6 +104,28 @@ package TandemUseCases {
         action noResponse           { doc /* E. Operator does not respond -> keep waiting (never auto-approve). */ }
         action approvedPersonLeaves { doc /* F. Person walks out of view at the moment of approval -> approval refused; operator told why. */ }
         action pilotTakeover        { doc /* G. Any time: pilot takeover -> TakeManualControl. */ }
+
+        // --- attributes ---
+        attribute personsInView : ScalarValues::Boolean; 
+        attribute approved      : ScalarValues::Boolean;
+        attribute stillInView   : ScalarValues::Boolean;
+
+        // --- behavior ---
+        first start;
+        then loop action acquiring {
+            loop action searching {
+                perform scanForPersons;
+                if not personsInView { perform noneFound; }
+            } until personsInView;
+            perform showPersons;
+            loop action asking {
+                perform proposePerson;
+            } until approved;
+            if not stillInView { perform approvedPersonLeaves; }
+        } until approved and stillInView;
+        then targetSet;
+        then done;
+
     }
 
     use case def FilmTarget{

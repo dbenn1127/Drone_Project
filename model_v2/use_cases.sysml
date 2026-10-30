@@ -21,11 +21,11 @@ package TandemUseCases {
         action prechecksFail            { doc /* D. Prechecks fail (e.g. battery too low): arming refused; failures shown. */}
 
         // --- attributes ---
-        attribute connected : ScalarValues::Boolean;
-        attribute allReady : ScalarValues::Boolean;
-        attribute faultFound : ScalarValues::Boolean;
+        attribute connected         : ScalarValues::Boolean;
+        attribute allReady          : ScalarValues::Boolean;
+        attribute faultFound        : ScalarValues::Boolean;
         attribute settingsConfirmed : ScalarValues::Boolean;
-        attribute settingsValid : ScalarValues::Boolean;
+        attribute settingsValid     : ScalarValues::Boolean;
 
         //--- behavior ---
         first start;
@@ -86,8 +86,8 @@ package TandemUseCases {
         action altitudeNotReached       { doc /* B. Launch altitude not reached within 10 s [TBR]: drone holds; operator alerted. */ }
 
         // --- attributes ---
-        attribute altitudeReached : ScalarValues::Boolean;
-        attribute climbTimedOut : ScalarValues::Boolean;    // 10s [TBR], see LCH-3
+        attribute altitudeReached   : ScalarValues::Boolean;
+        attribute climbTimedOut     : ScalarValues::Boolean;    // 10s [TBR], see LCH-3
 
         // --- behavior ---
         first start;
@@ -142,7 +142,7 @@ package TandemUseCases {
         attribute personsInView : ScalarValues::Boolean; 
         attribute approved      : ScalarValues::Boolean;
         attribute stillInView   : ScalarValues::Boolean;
-        attribute pickedOther : ScalarValues::Boolean;   // picking another person also counts as approved
+        attribute pickedOther   : ScalarValues::Boolean;   // picking another person also counts as approved
 
         // --- behavior ---
         first start;
@@ -191,7 +191,11 @@ package TandemUseCases {
         actor operator : OperatorPilot;
         actor target : Target;
         objective                   { doc /* Drone follows target and films until commanded to stop or target is lost.*/}
-        include use case adjust : AdjustFraming;
+        include use case adjust : AdjustFraming {
+            actor :>> operator = FilmTarget::operator;
+            actor :>> target   = FilmTarget::target;
+            attribute :>> lost = FilmTarget::lost;
+        }
         include use case pause : PauseFollowing;
 
         // --- main flow ---
@@ -249,7 +253,7 @@ package TandemUseCases {
             }
         }
 
-    use case def AdjustFraming {
+        use case def AdjustFraming {
         doc /* While following, the operator changes the follow settings; the drone moves gradually to the new position without entering the keep-out zone. */
         comment Preconditions /* Tandem is following a target. */
         subject tandem : TandemSystem;
@@ -259,18 +263,69 @@ package TandemUseCases {
 
         // --- main flow ---
         action selectChange         { doc /* 1. Operator selects change settings. */ }
-        action enterValues          { doc /* 2. Operator enters new values. */ }
-        action confirmReceived      { doc /* 3. Tandem confirms the new values were received. */ }
-        action moveGradually        { doc /* 4. Drone moves gradually to the new position. */ }
-        action settle               { doc /* 5. Drone settles at the new position; following continues. */ }
+        action showCurrentSettings  { doc /* 2. Tandem shows the current follow settings. */ }
+        action enterValues          { doc /* 3. Operator enters and submits new values. */ }
+        action confirmReceived      { doc /* 4. Tandem confirms the new values were received. */ }
+        action moveGradually        { doc /* 5. Drone moves gradually to the new position. */ }
+        action settle               { doc /* 6. Drone settles at the new position; following continues. */ }
 
-        // --- alternates ---
-        action outOfRange           { doc /* A. Values out of range: not accepted; allowed range shown; nothing sent. */ }
-        action notReceived          { doc /* B. No confirmation (link problem): operator told the change was not received; settings unchanged. */ }
-        action pathCrossesKeepOut   { doc /* C. Path to the new position crosses the keep-out zone: drone goes around the target at >= 5 m. */ }
-        action targetLost           { doc /* D. Target lost during the move -> FilmTarget targetLost. */ }
-        action newestWins           { doc /* E. Operator changes values again mid-move: newest command wins. */ }
-        action pilotTakeover        { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
+                // --- alternates ---
+        action rejectOutOfRange     { doc /* A. Values out of range: not accepted; allowed range shown; nothing sent. */ }
+        action reportNotReceived    { doc /* B. No confirmation (link problem): operator told the change was not received; settings unchanged. */ }
+        action routeAroundKeepOut   { doc /* C. Path to the new position crosses the keep-out zone: drone goes around the target at >= 5 m. */ }
+        action stopMoveOnTargetLost { doc /* D. Target lost during the move: move stops -> FilmTarget handles the loss. */ }
+        action switchToNewest       { doc /* E. Operator submits new values mid-move: they are checked and confirmed like any change; the drone abandons the old move and heads for the newest. */ }
+        action handOverToPilot      { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
+
+        // --- attributes ---
+        attribute valuesValid      : ScalarValues::Boolean;   // FLW-13
+        attribute received         : ScalarValues::Boolean;   // XC-1 / XC-2
+        attribute pathBlocked      : ScalarValues::Boolean;   // XC-3
+        attribute newValuesEntered : ScalarValues::Boolean;   // FLW-18
+        attribute atNewPosition    : ScalarValues::Boolean;
+        attribute lost             : ScalarValues::Boolean;   // FLW-8
+
+        // --- behavior ---
+        first start;
+        then selectChange;
+        then showCurrentSettings;
+        then loop action changing {
+            loop action entering {
+                perform enterValues;
+                then if not valuesValid { perform rejectOutOfRange; }
+            } until valuesValid;
+            then if not received { perform reportNotReceived; }
+                 else {
+                     perform confirmReceived;
+                     then loop action moving {
+                         if pathBlocked { perform routeAroundKeepOut; }
+                         else { perform moveGradually; }
+                     } until atNewPosition or lost or newValuesEntered;
+                     then if newValuesEntered { perform switchToNewest; }
+                 }
+        } until not newValuesEntered;
+        then if lost { perform stopMoveOnTargetLost; }
+             else if received { perform settle; }
+        then done;
+    }
+
+    part adjustLanes {
+        use case adjust : AdjustFraming;
+        part tandem : TandemSystem {
+            perform adjust.showCurrentSettings;
+            perform adjust.rejectOutOfRange;    // ground station is inside Tandem
+            perform adjust.confirmReceived;
+            perform adjust.reportNotReceived;
+            perform adjust.moveGradually;
+            perform adjust.routeAroundKeepOut;
+            perform adjust.switchToNewest;
+            perform adjust.settle;
+            perform adjust.stopMoveOnTargetLost;
+        }
+        part operator : OperatorPilot {
+            perform adjust.selectChange;
+            perform adjust.enterValues;
+        }
     }
 
     use case def PauseFollowing {
@@ -309,18 +364,74 @@ package TandemUseCases {
 
         // --- main flow ---
         action selectEndFlight      { doc /* 1. Operator selects end flight: return to launch or land here. */ }
-        action confirmEnd           { doc /* 2. Tandem confirms; the target is released. */ }
-        action returnToLaunch       { doc /* 3a. Return to launch: drone flies to the launch point at return altitude (6 m [TBR]). */ }
-        action landHere             { doc /* 3b. Land here: no travel. */ }
-        action descendAndLand       { doc /* 4. Drone descends and lands. */ }
-        action disarm               { doc /* 5. Drone disarms. */ }
+        action confirmEnd           { doc /* 2. Tandem confirms the command. */ }
+        action releaseTarget        { doc /* 3. Tandem stops following the target. */ }
+        action returnToLaunch       { doc /* 4a. Return to launch: drone flies to the launch point at return altitude (6 m [TBR]). */ }
+        action stopInPlace          { doc /* 4b. Land here: drone stops and holds where it is. */ }
+        action showLandingSpot      { doc /* 5. During descent, Tandem shows the operator the area beneath the drone. */ }
+        action checkLandingSpot     { doc /* 6. Operator watches the landing spot; takes over if it is not clear. */ }
+        action descend              { doc /* 7. Drone descends. */ }
+        action disarm               { doc /* 8. Drone disarms once landed. */ }
 
         // --- alternates ---
-        action notConfirmed         { doc /* A. No confirmation (link problem): operator told; pilot commands return or land on the RC. */ }
-        action watchLandingSpot     { doc /* B. During descent the camera shows the landing spot; operator takes over if it is not clear. */ }
-        action personBelow          { doc /* C. Person detected beneath the drone during descent: descent stops; operator alerted. */ }
-        action positionLost         { doc /* D. Position lost during return: drone lands in place; operator alerted and advised to take over. */ }
-        action pilotTakeover        { doc /* E. Any time: pilot takeover -> TakeManualControl. */ }
+        action reportNotConfirmed   { doc /* A. No confirmation (link problem): operator told; pilot can command return or land on the RC. */ }
+        action stopDescent          { doc /* B. Person detected beneath the drone: descent stops; drone holds. */ }
+        action alertPersonBelow     { doc /* C. Operator alerted that a person is beneath the drone. */ }
+        action abandonReturn        { doc /* D. Position lost during return: return abandoned; drone lands where it is (operator alerted and advised, XC-13/14). */ }
+        action handOverToPilot      { doc /* E. Any time: pilot takeover -> TakeManualControl. */ }
+
+        // --- attributes ---
+        attribute received      : ScalarValues::Boolean;   // XC-1 / XC-2
+        attribute returnChosen  : ScalarValues::Boolean;   // operator chose return to launch (else land here)
+        attribute atLaunchPoint : ScalarValues::Boolean;   // END-1
+        attribute gpsLost       : ScalarValues::Boolean;   // XC-12
+        attribute personBeneath : ScalarValues::Boolean;   // END-6
+        attribute landed        : ScalarValues::Boolean;   // END-4
+
+        // --- behavior ---
+        first start;
+        then selectEndFlight;
+        then if not received { perform reportNotConfirmed; }
+             else {
+                 perform confirmEnd;
+                 then perform releaseTarget;
+                 then if returnChosen {
+                          loop action returning {
+                              perform returnToLaunch;
+                          } until atLaunchPoint or gpsLost;
+                          then if gpsLost { perform abandonReturn; }
+                      }
+                      else { perform stopInPlace; }
+                 then loop action landing {
+                     perform showLandingSpot;
+                     then perform checkLandingSpot;
+                     then if personBeneath { perform stopDescent; then perform alertPersonBelow; }
+                          else { perform descend; }
+                 } until landed;
+                 then perform disarm;
+             }
+        then done;
+    }
+
+    part endLanes {
+        use case endFlight : EndFlight;
+        part tandem : TandemSystem {
+            perform endFlight.confirmEnd;
+            perform endFlight.releaseTarget;
+            perform endFlight.returnToLaunch;
+            perform endFlight.stopInPlace;
+            perform endFlight.showLandingSpot;
+            perform endFlight.descend;
+            perform endFlight.disarm;
+            perform endFlight.reportNotConfirmed;
+            perform endFlight.stopDescent;
+            perform endFlight.alertPersonBelow;
+            perform endFlight.abandonReturn;
+        }
+        part operator : OperatorPilot {
+            perform endFlight.selectEndFlight;
+            perform endFlight.checkLandingSpot;
+        }
     }
 
     use case def TakeManualControl {

@@ -82,7 +82,7 @@ package TandemUseCases {
         action hoverAtAltitude          { doc /* 3. Drone hovers at launch altitude. */ }
 
         // --- alternates ---
-        action pilotTakeover            { doc /* A. Any time: pilot takeover -> TakeManualControl. */ }
+        action handOverToPilot          { doc /* A. Any time: pilot takeover -> TakeManualControl. */ }
         action altitudeNotReached       { doc /* B. Launch altitude not reached within 10 s [TBR]: drone holds; operator alerted. */ }
 
         // --- attributes ---
@@ -136,7 +136,7 @@ package TandemUseCases {
         action personLeaves         { doc /* D. Person walks out of view before the operator decides -> removed from display; carry on. */ }
         action noResponse           { doc /* E. Operator does not respond -> keep waiting (never auto-approve). */ }
         action approvedPersonLeaves { doc /* F. Person walks out of view at the moment of approval -> approval refused; operator told why. */ }
-        action pilotTakeover        { doc /* G. Any time: pilot takeover -> TakeManualControl. */ }
+        action handOverToPilot      { doc /* G. Any time: pilot takeover -> TakeManualControl. */ }
 
         // --- attributes ---
         attribute personsInView : ScalarValues::Boolean; 
@@ -215,7 +215,7 @@ package TandemUseCases {
         action reportTargetLost     { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
         action reportFallingBehind  { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
         action reportOverlap        { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
-        action pilotTakeover        { doc /* H. Any time: pilot takeover -> TakeManualControl. */ }
+        action handOverToPilot      { doc /* H. Any time: pilot takeover -> TakeManualControl. */ }
 
         // --- attributes ---
         attribute lost              : ScalarValues::Boolean;   // FLW-8
@@ -519,17 +519,64 @@ package TandemUseCases {
         comment Preconditions /* Pilot holding the RC; drone flying under Tandem's autonomous control. */
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
-        objective               { doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot's inputs. */}
+        objective                   { doc /* Drone is controlled by RC; all autonomous movement has stopped. The drone moves only in response to the pilot's inputs. */}
 
         // --- main flow ---
-        action selectManual     { doc /* 1. Pilot selects manual control on the RC. */ }
-        action stopAutonomy     { doc /* 2. Tandem stops all autonomous movement. */ }
-        action holdUntilSticks  { doc /* 3. Drone holds position until the pilot gives stick inputs. */ }
-        action pilotFlies       { doc /* 4. Pilot flies the drone by RC. */ }
+        action selectManual         { doc /* 1. Pilot selects manual control on the RC. */ }
+        action stopAutonomy         { doc /* 2. Tandem stops all autonomous movement. */ }
+        action confirmManual        { doc /* Tandem shows the operator that manual control is active. */}
+        action holdPosition         { doc /* 3. Drone holds position until the pilot gives stick inputs. */ }
+        action pilotFlies           { doc /* 4. Pilot flies the drone by RC. */ }
+        action followStickInput     { doc /* 5. Tandem moves the drone only as the stick commands. */}
 
         // --- alternates ---
-        action rcLinkLost       { doc /* A. RC link lost during manual flight: Tandem returns to launch (RC-loss failsafe). */ }
-        action handBack         { doc /* B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves the target). */ }
+        action returnOnRcLoss       { doc /* A. RC link lost during manual flight: Tandem returns to launch (RC-loss failsafe). */ }
+        action handBack             { doc /* B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves the target). */ }
+        action confirmHandBack      { doc /* C. Tandem shows the operator that control is back with Tandem. */}
+        action resumeAcquisition    { doc /* d. Tandem returns to target acquisition (operator reapproves the target). */}
+
+        // --- attributes ---
+        attribute sticksMoved       : ScalarValues::Boolean;
+        attribute pilotHandsBack    : ScalarValues::Boolean;
+        attribute rcLost            : ScalarValues::Boolean;
+
+        // --- behavior ---
+        first start;
+        then selectManual;
+        then stopAutonomy;
+        then confirmManual;
+        then loop action manualFlight{
+            if not sticksMoved { perform holdPosition; }
+            else {
+                perform PilotFlies;
+                then perform followStickInput;
+            }
+        } until pilotHandsBack or rcLost;
+        then if rcLost { perform returnOnLoss; }
+            else {
+                perform handBack;
+                then perform confirmHandBack;
+                then perform resumeAcquisition;
+            }
+        then done;
+
+    }
+
+    part manualLanes {
+        use case manual : TakeManualControl;
+        part tandem : TandemSystem {
+            perform manual.stopAutonomy;
+            perform manual.holdPosition;
+            perform manual.followStickInput;
+            perform manual.returnOnRcLoss;
+            perform manual.confirmHandBack;
+            perform manual.resumeAcquisition;
+        }
+        part pilot : OperatorPilot {
+            perform manual.selectManual;
+            perform manual.pilotFlies;
+            perform manual.handBack;
+        }
     }
 
     use case def KeepPersonInView {
@@ -537,20 +584,61 @@ package TandemUseCases {
         subject tandem : TandemSystem;
         actor operator : OperatorPilot;
         actor target : Target;
-        objective               { doc /* The approved person stayed in view and was followed; Tandem never switched to anyone the operator didn't approve; the flight ended with the drone safely landed. */}
-        include use case prepare : PrepareForFlight;
-        include use case launch : LaunchDrone;
-        include use case acquire : AcquireTarget;
-        include use case film : FilmTarget;
-        include use case endFlight : EndFlight;
+        objective                   { doc /* The approved person stayed in view and was followed; Tandem never switched to anyone the operator didn't approve; the flight ended with the drone safely landed. */}
+        include use case prepare : PrepareForFlight {
+            actor :>> operator = KeepPersonInView::operator;
+        }
+        include use case launch : LaunchDrone {
+            actor :>> operator = KeepPersonInView::operator;
+        }
+        include use case acquire : AcquireTarget {
+            actor :>> operator = KeepPersonInView::operator;
+            actor :>> target = KeepPersonInView::target;
+        }
+        include use case film : FilmTarget {
+            actor :>> operator = KeepPersonInView::operator;
+            actor :>> target = KeepPersonInView::target;
+            attribute :>> endRequested = KeepPersonInView::endRequested;
+        }
+        include use case endFlight : EndFlight {
+            actor :>> operator = KeepPersonInView::operator;
+        }
 
         // --- alternates ---
-        action targetLost       { doc /* A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). */ }
-        action pilotTakeover    { doc /* B. Any time: pilot takeover -> TakeManualControl. */ }
-        action reachesGeofence  { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
-        action lowBattery       { doc /* D. Any time: low battery -> return to launch and land (no person-below check); operator alerted. */ }
-        action criticalBattery  { doc /* E. Any time: critical battery -> land in place (no person-below check); operator alerted. */ }
-        action groundLinkLost   { doc /* F. Any time: ground link lost -> hold; return to launch and land (no person-below check) if not restored within 10 s. If restored, keep holding until the operator resumes. */ }
-        action rcLinkLost       { doc /* G. Any time: RC link lost -> return to launch and land (no person-below check); operator alerted. */ }
-        action gpsLost          { doc /* H. Any time: GPS lost -> land in place (no person-below check); operator alerted and advised to take over. */ }    }
-}
+        action returnToAcquisition      { doc /* A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). */ }
+        action handOverToPilot          { doc /* B. Any time: pilot takeover -> TakeManualControl. */ }
+        action stopAtGeofence           { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
+        action returnOnLowBattery       { doc /* D. Any time: low battery -> return to launch and land (no person-below check); operator alerted. */ }
+        action landOnCriticalBattery    { doc /* E. Any time: critical battery -> land in place (no person-below check); operator alerted. */ }
+        action holdOnGroundLinkLoss     { doc /* F. Any time: ground link lost -> hold; return to launch and land (no person-below check) if not restored within 10 s. If restored, keep holding until the operator resumes. */ }
+        action returnOnRcLoss           { doc /* G. Any time: RC link lost -> return to launch and land (no person-below check); operator alerted. */ }
+        action landOnGpsLoss            { doc /* H. Any time: GPS lost -> land in place (no person-below check); operator alerted and advised to take over. */ }
+
+        // --- attributes ---
+        attribute endRequested : ScalarValues::Boolean;     // the operator's choice to end the flight. 
+
+        // --- behavior ---
+        first start;
+        then prepare;
+        then launch;
+        then loop action mission {
+            perform acquire;
+            then perform film;
+            then if not endRequested { perform returnToAcquisitionl }
+        } until endRequested;
+        then endFlight;
+        then done;
+    }
+
+    part missionLanes {
+        use case mission : KeepPersonInView;
+        part tandem : TandemSystem {
+            perform mission.returnToAcquisition;
+            perform mission.stopAtGeoFence;
+            perform mission.returnOnLowBattery;
+            perform mission.landOnCriticalBattery;
+            perform mission.holdOnGroundLinkLoss;
+            perform mission.returnonRcLoss;
+            perform mission landOnGpsLoss;
+        }
+    }

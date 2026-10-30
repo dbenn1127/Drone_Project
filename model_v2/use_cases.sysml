@@ -55,7 +55,7 @@ package TandemUseCases {
                 perform prepare.connectToGroundStation;
                 perform prepare.runPrechecks;
                 perform prepare.showSettings;
-                perform prepare.requestArm;
+                perform prepare.arm;
                 perform prepare.noConnection;
                 perform prepare.notReady;
                 perform prepare.invalidSetting;
@@ -64,7 +64,7 @@ package TandemUseCases {
             part operator : OperatorPilot {
                 perform prepare.powerOn;
                 perform prepare.confirmSettings;
-                perform prepare.arm;
+                perform prepare.requestArm;
             }
         }
     
@@ -195,8 +195,14 @@ package TandemUseCases {
             actor :>> operator = FilmTarget::operator;
             actor :>> target   = FilmTarget::target;
             attribute :>> lost = FilmTarget::lost;
+            attribute :>> overlapped = FilmTarget::overlapped;
         }
-        include use case pause : PauseFollowing;
+        include use case pause : PauseFollowing {
+            actor :>> operator = FilmTarget::operator;
+            actor :>> target   = FilmTarget::target;
+            attribute :>> lost       = FilmTarget::lost;
+            attribute :>> overlapped = FilmTarget::overlapped;
+        }
 
         // --- main flow ---
         action trackTarget          { doc /* 1. Tandem tracks the target's position and direction of travel. */}
@@ -253,7 +259,7 @@ package TandemUseCases {
             }
         }
 
-        use case def AdjustFraming {
+    use case def AdjustFraming {
         doc /* While following, the operator changes the follow settings; the drone moves gradually to the new position without entering the keep-out zone. */
         comment Preconditions /* Tandem is following a target. */
         subject tandem : TandemSystem;
@@ -266,8 +272,10 @@ package TandemUseCases {
         action showCurrentSettings  { doc /* 2. Tandem shows the current follow settings. */ }
         action enterValues          { doc /* 3. Operator enters and submits new values. */ }
         action confirmReceived      { doc /* 4. Tandem confirms the new values were received. */ }
-        action moveGradually        { doc /* 5. Drone moves gradually to the new position. */ }
-        action settle               { doc /* 6. Drone settles at the new position; following continues. */ }
+        action trackTarget          { doc /* 5. Tandem keeps tracking the target during the move. */ }
+        action moveGradually        { doc /* 6. Drone moves gradually to the new position. */ }
+        action keepCentered         { doc /* 7. Camera keeps the target centred during the move; 5-7 repeat until the drone is in position. */ }
+        action settle               { doc /* 8. Drone settles at the new position; following continues. */ }
 
                 // --- alternates ---
         action rejectOutOfRange     { doc /* A. Values out of range: not accepted; allowed range shown; nothing sent. */ }
@@ -276,6 +284,7 @@ package TandemUseCases {
         action stopMoveOnTargetLost { doc /* D. Target lost during the move: move stops -> FilmTarget handles the loss. */ }
         action switchToNewest       { doc /* E. Operator submits new values mid-move: they are checked and confirmed like any change; the drone abandons the old move and heads for the newest. */ }
         action handOverToPilot      { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
+        action stopMoveOnOverlap    { doc /* G. Another person overlaps the target during the move: move stops -> FilmTarget handles the overlap. */ }
 
         // --- attributes ---
         attribute valuesValid      : ScalarValues::Boolean;   // FLW-13
@@ -284,6 +293,7 @@ package TandemUseCases {
         attribute newValuesEntered : ScalarValues::Boolean;   // FLW-18
         attribute atNewPosition    : ScalarValues::Boolean;
         attribute lost             : ScalarValues::Boolean;   // FLW-8
+        attribute overlapped       : ScalarValues::Boolean;   // FLW-12
 
         // --- behavior ---
         first start;
@@ -298,14 +308,17 @@ package TandemUseCases {
                  else {
                      perform confirmReceived;
                      then loop action moving {
-                         if pathBlocked { perform routeAroundKeepOut; }
-                         else { perform moveGradually; }
-                     } until atNewPosition or lost or newValuesEntered;
+                        perform trackTarget;
+                        then if pathBlocked { perform routeAroundKeepOut; }
+                            else { perform moveGradually; }
+                        then perform keepCentered;
+                     } until atNewPosition or lost or overlapped or newValuesEntered;
                      then if newValuesEntered { perform switchToNewest; }
                  }
         } until not newValuesEntered;
         then if lost { perform stopMoveOnTargetLost; }
-             else if received { perform settle; }
+            else if overlapped { perform stopMoveOnOverlap; }
+            else if received { perform settle; }
         then done;
     }
 
@@ -316,11 +329,14 @@ package TandemUseCases {
             perform adjust.rejectOutOfRange;    // ground station is inside Tandem
             perform adjust.confirmReceived;
             perform adjust.reportNotReceived;
+            perform adjust.trackTarget;
             perform adjust.moveGradually;
+            perform adjust.keepCentered;
             perform adjust.routeAroundKeepOut;
             perform adjust.switchToNewest;
             perform adjust.settle;
             perform adjust.stopMoveOnTargetLost;
+            perform adjust.stopMoveOnOverlap;
         }
         part operator : OperatorPilot {
             perform adjust.selectChange;
@@ -336,20 +352,81 @@ package TandemUseCases {
         actor target : Target;
         objective                       { doc /* Drone holds position. Camera and drone rotating to follow target as necessary */}
         
-        //--- main flow ---
+        // --- main flow ---
         action selectPause              { doc /* 1. Operator selects pause. */ }
         action confirmPaused            { doc /* 2. Tandem confirms following is paused. */ }
-        action holdAndTrack             { doc /* 3. Drone holds position; camera keeps tracking the target; drone rotates when the camera reaches its limit. */ }
-        action selectResume             { doc /* 4. Operator selects resume. */ }
-        action returnToZone             { doc /* 5. Drone returns gradually to the framing zone; following continues. */ }
+        action trackTarget              { doc /* 3. Tandem keeps tracking the target. */ }
+        action holdPosition             { doc /* 4. Drone holds position. */ }
+        action keepCentered             { doc /* 5. Camera keeps the target centred; drone rotates when the camera reaches its limit. */ }
+        action selectResume             { doc /* 6. Operator selects resume. */ }
+        action confirmResumed           { doc /* 7. Tandem confirms following is resumed. */ }
+        action returnToZone             { doc /* 8. Drone returns gradually to the framing zone; following continues. */ }
 
         // --- alternates ---
-        action pauseNotConfirmed        { doc /* A. Pause not confirmed (link problem): operator told; drone keeps following. */ }
-        action targetLost               { doc /* B. Target not seen for 2 s [TBR]: lost; operator alerted -> AcquireTarget. */ }
-        action targetApproaches         { doc /* C. Target walks into the keep-out zone: drone holds position until they leave. */ }
-        action overlap                  { doc /* D. Another person overlaps the target -> AcquireTarget. */ }
-        action resumePathCrossesKeepOut { doc /* E. On resume, path back crosses the keep-out zone: drone goes around the target at >= 5 m. */}
-        action pilotTakeover            { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
+        action reportPauseNotConfirmed  { doc /* A. Pause not confirmed (link problem): operator told; drone keeps following. */ }
+        action reportResumeNotConfirmed { doc /* B. Resume not confirmed (link problem): operator told; drone stays paused. */ }
+        action endPauseOnTargetLost     { doc /* C. Target not seen for 2 s [TBR]: pause ends -> FilmTarget handles the loss. */ }
+        action endPauseOnOverlap        { doc /* D. Another person overlaps the target: pause ends -> FilmTarget handles the overlap. */ }
+        action routeAroundKeepOut       { doc /* E. On resume, path back crosses the keep-out zone: drone goes around the target at >= 5 m. */ }
+        action handOverToPilot          { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
+
+        // --- attributes ---
+        attribute pauseConfirmed    : ScalarValues::Boolean;   // XC-1 / XC-2
+        attribute operatorResumes   : ScalarValues::Boolean;   // operator's choice to resume
+        attribute resumeConfirmed   : ScalarValues::Boolean;   // XC-1 / XC-2
+        attribute lost              : ScalarValues::Boolean;   // FLW-8
+        attribute overlapped        : ScalarValues::Boolean;   // FLW-12
+        attribute pathBlocked       : ScalarValues::Boolean;   // XC-3
+        attribute inZone            : ScalarValues::Boolean;   // FLW-1
+
+        // --- behavior ---
+        first start; 
+        then selectPause;
+        then if not pauseConfirmed { perform reportPauseNotConfirmed; }
+             else {
+                perform confirmPaused;
+                then loop action paused {
+                    perform trackTarget;
+                    then perform holdPosition;
+                    then perform keepCentered;
+                    then if operatorResumes {
+                        perform selectResume;
+                        then if resumeConfirmed { perform confirmResumed; }
+                             else { perform reportResumeNotConfirmed; }
+                         }
+                } until resumeConfirmed or lost or overlapped;
+                then if lost { perform endPauseOnTargetLost; }
+                     else if overlapped { perform endPauseOnOverlap; } 
+                     else {
+                        loop action returning {
+                            perform trackTarget;
+                            then if pathBlocked { perform routeAroundKeepOut; }
+                            else { perform returnToZone; }
+                        } until inZone or lost;
+                     }
+             }
+        then done;
+    }
+
+    part pauseLanes {
+        use case pause : PauseFollowing;
+        part tandem : TandemSystem {
+            perform pause.confirmPaused;
+            perform pause.holdPosition;
+            perform pause.trackTarget;
+            perform pause.keepCentered;
+            perform pause.confirmResumed;
+            perform pause.returnToZone;
+            perform pause.reportPauseNotConfirmed;
+            perform pause.reportResumeNotConfirmed;
+            perform pause.endPauseOnTargetLost;
+            perform pause.endPauseOnOverlap;
+            perform pause.routeAroundKeepOut;
+        }
+        part operator : OperatorPilot {
+            perform pause.selectPause;
+            perform pause.selectResume;
+        }
     }
     
     use case def EndFlight {
@@ -377,7 +454,7 @@ package TandemUseCases {
         action reportNotConfirmed   { doc /* A. No confirmation (link problem): operator told; pilot can command return or land on the RC. */ }
         action stopDescent          { doc /* B. Person detected beneath the drone: descent stops; drone holds. */ }
         action alertPersonBelow     { doc /* C. Operator alerted that a person is beneath the drone. */ }
-        action abandonReturn        { doc /* D. Position lost during return: return abandoned; drone lands where it is (operator alerted and advised, XC-13/14). */ }
+        action abandonReturn        { doc /* D. Position lost: commanded ending abandoned; emergency landing in place without person-below check -> KeepPersonInView gpsLost. */ }
         action handOverToPilot      { doc /* E. Any time: pilot takeover -> TakeManualControl. */ }
 
         // --- attributes ---
@@ -393,24 +470,27 @@ package TandemUseCases {
         then selectEndFlight;
         then if not received { perform reportNotConfirmed; }
              else {
-                 perform confirmEnd;
-                 then perform releaseTarget;
-                 then if returnChosen {
-                          loop action returning {
-                              perform returnToLaunch;
-                          } until atLaunchPoint or gpsLost;
-                          then if gpsLost { perform abandonReturn; }
+                perform confirmEnd;
+                then perform releaseTarget;
+                then if returnChosen {
+                        loop action returning {
+                            perform returnToLaunch;
+                        } until atLaunchPoint or gpsLost;
                       }
                       else { perform stopInPlace; }
-                 then loop action landing {
-                     perform showLandingSpot;
-                     then perform checkLandingSpot;
-                     then if personBeneath { perform stopDescent; then perform alertPersonBelow; }
-                          else { perform descend; }
-                 } until landed;
-                 then perform disarm;
-             }
+                 then if gpsLost { perform abandonReturn; }
+                      else {
+                          loop action landing {
+                              perform showLandingSpot;
+                              then perform checkLandingSpot;
+                              then if personBeneath { perform stopDescent; then perform alertPersonBelow; }
+                                   else { perform descend; }
+                          } until landed;
+                          then perform disarm;
+                      }
+            }
         then done;
+        //---
     }
 
     part endLanes {
@@ -468,10 +548,9 @@ package TandemUseCases {
         action targetLost       { doc /* A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). */ }
         action pilotTakeover    { doc /* B. Any time: pilot takeover -> TakeManualControl. */ }
         action reachesGeofence  { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
-        action lowBattery       { doc /* D. Any time: low battery -> return to launch; operator alerted. */ }
-        action criticalBattery  { doc /* E. Any time: critical battery -> land in place; operator alerted. */ }
-        action groundLinkLost   { doc /* F. Any time: ground link lost -> hold; return to launch if not restored within 10 s. If restored, keep holding until the operator resumes. */ }
-        action rcLinkLost       { doc /* G. Any time: RC link lost -> return to launch; operator alerted. */ }
-        action gpsLost          { doc /* H. Any time: GPS lost -> land in place; operator alerted and advised to take over. */ }
-    }
+        action lowBattery       { doc /* D. Any time: low battery -> return to launch and land (no person-below check); operator alerted. */ }
+        action criticalBattery  { doc /* E. Any time: critical battery -> land in place (no person-below check); operator alerted. */ }
+        action groundLinkLost   { doc /* F. Any time: ground link lost -> hold; return to launch and land (no person-below check) if not restored within 10 s. If restored, keep holding until the operator resumes. */ }
+        action rcLinkLost       { doc /* G. Any time: RC link lost -> return to launch and land (no person-below check); operator alerted. */ }
+        action gpsLost          { doc /* H. Any time: GPS lost -> land in place (no person-below check); operator alerted and advised to take over. */ }    }
 }

@@ -54,21 +54,20 @@ package TandemTraceability {
     dependency from configurableFollowSettings  to AdjustFraming::enterValues;
     dependency from limitCameraToTargetDistance to AdjustFraming::rejectOutOfRange;
     dependency from keepTargetCentered          to FilmTarget::keepCentered;
-    dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
+    dependency from keepTargetCentered          to PauseFollowing::keepCentered;
     dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;   // Valid per SysML v2.1 (named loop = owned ActionUsage); Spec42 currently can't resolve (tool limitation).
     dependency from freezeZoneWhenStationary    to FilmTarget::holdWhileStationary;
     dependency from lostAfterNotSeen            to FilmTarget::reportTargetLost;
     dependency from returnToAcquisitionWhenLost to FilmTarget::reportTargetLost;
-    dependency from alertOperatorWhenLost       to PauseFollowing::targetLost;
-    dependency from lostAfterNotSeen            to PauseFollowing::targetLost;
-    dependency from returnToAcquisitionWhenLost to PauseFollowing::targetLost;
+    dependency from lostAfterNotSeen            to PauseFollowing::endPauseOnTargetLost;
+    dependency from returnToAcquisitionWhenLost to PauseFollowing::endPauseOnTargetLost;
     dependency from lostAfterNotSeen            to AdjustFraming::stopMoveOnTargetLost;
     dependency from returnToAcquisitionWhenLost to AdjustFraming::stopMoveOnTargetLost;
     dependency from returnToAcquisitionWhenLost to KeepPersonInView::targetLost;
     dependency from alertOperatorWhenLost       to FilmTarget::reportTargetLost;
     dependency from alertFallingBehind          to FilmTarget::reportFallingBehind;
     dependency from reacquireOnOverlap          to FilmTarget::reportOverlap;
-    dependency from reacquireOnOverlap          to PauseFollowing::overlap;
+    dependency from reacquireOnOverlap          to PauseFollowing::endPauseOnOverlap;
     dependency from reacquireOnOverlap          to KeepPersonInView::targetLost;
     dependency from rejectOutOfRangeSettings    to AdjustFraming::rejectOutOfRange;
     dependency from rejectOutOfRangeSettings    to PrepareForFlight::invalidSetting;
@@ -78,10 +77,14 @@ package TandemTraceability {
     dependency from gradualRepositioning        to PauseFollowing::returnToZone;
     dependency from newestSettingsWins          to AdjustFraming::switchToNewest;
     dependency from holdOnPause                 to PauseFollowing::selectPause;
-    dependency from holdOnPause                 to PauseFollowing::holdAndTrack;
+    dependency from holdOnPause                 to PauseFollowing::holdPosition;
     dependency from resumeSameTarget            to PauseFollowing::selectResume;
     dependency from resumeSameTarget            to PauseFollowing::returnToZone;
     dependency from configurableFollowSettings  to AdjustFraming::showCurrentSettings;
+    dependency from reacquireOnOverlap          to AdjustFraming::stopMoveOnOverlap;
+    dependency from keepTargetCentered          to AdjustFraming::keepCentered;
+    dependency from detectionRange              to AdjustFraming::trackTarget;
+    dependency from detectionRange              to PauseFollowing::trackTarget;
 
     // ---- End ----
     dependency from returnToLaunchPoint         to EndFlight::selectEndFlight;
@@ -101,7 +104,7 @@ package TandemTraceability {
     dependency from holdUntilStickInput         to TakeManualControl::holdUntilSticks;
     dependency from manualControlOnly           to TakeManualControl::pilotFlies;
     dependency from reacquireAfterHandBack      to TakeManualControl::handBack;
-    dependency from manualOverrideStopsAutonomy to PauseFollowing::pilotTakeover;
+    dependency from manualOverrideStopsAutonomy to PauseFollowing::handOverToPilot;
     dependency from manualOverrideStopsAutonomy to LaunchDrone::pilotTakeover;
     dependency from manualOverrideStopsAutonomy to AcquireTarget::pilotTakeover;
     dependency from manualOverrideStopsAutonomy to FilmTarget::pilotTakeover;
@@ -112,18 +115,19 @@ package TandemTraceability {
     // XC-1/2: command confirmation
     dependency from confirmOperatorCommands     to AdjustFraming::confirmReceived;
     dependency from confirmOperatorCommands     to PauseFollowing::confirmPaused;
+    dependency from confirmOperatorCommands     to PauseFollowing::confirmResumed;
     dependency from confirmOperatorCommands     to EndFlight::confirmEnd;
     dependency from alertCommandNotApplied      to AdjustFraming::reportNotReceived;
-    dependency from alertCommandNotApplied      to PauseFollowing::pauseNotConfirmed;
+    dependency from alertCommandNotApplied      to PauseFollowing::reportPauseNotConfirmed;
+    dependency from alertCommandNotApplied      to PauseFollowing::reportResumeNotConfirmed;
     dependency from alertCommandNotApplied      to EndFlight::reportNotConfirmed;
     dependency from holdAfterLinkRestored       to KeepPersonInView::groundLinkLost;
 
     // XC-3/4: keep-out zone
     dependency from respectKeepOutZone          to FilmTarget::holdForKeepOut;
     dependency from respectKeepOutZone          to AdjustFraming::routeAroundKeepOut;
-    dependency from respectKeepOutZone          to PauseFollowing::resumePathCrossesKeepOut;
+    dependency from respectKeepOutZone          to PauseFollowing::routeAroundKeepOut;
     dependency from holdWhileTargetInside       to FilmTarget::holdForKeepOut;
-    dependency from holdWhileTargetInside       to PauseFollowing::targetApproaches;
 
     // XC-5/6: geofence
     dependency from stayInsideGeofence          to KeepPersonInView::reachesGeofence;
@@ -157,6 +161,7 @@ package TandemTraceability {
     dependency from detectionRange              to FilmTarget::trackTarget;
     dependency from commandResponseTime         to AdjustFraming::confirmReceived;
     dependency from commandResponseTime         to PauseFollowing::confirmPaused;
+    dependency from commandResponseTime         to PauseFollowing::confirmResumed;
     dependency from commandResponseTime         to EndFlight::confirmEnd;
     dependency from followEndurance             to KeepPersonInView;
     dependency from videoRange                  to KeepPersonInView;

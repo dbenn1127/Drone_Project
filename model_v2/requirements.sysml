@@ -279,8 +279,8 @@ package TandemRequirements {
         }
 
         requirement <'END-6'> holdIfPersonBelow : TandemRequirement {
-            doc /* During descent, if a person is detected beneath the drone, Tandem shall stop descending and hold its position. */
-            comment Rationale /* Never continue lowering a drone onto a person.*/
+            doc /* During an operator-commanded descent, if a person is detected beneath the drone, Tandem shall stop descending and hold its position. */
+            comment Rationale /* Never continue lowering a drone onto a person. Failsafe landings are emergencies and do not stop; the operator watches the landing spot (END-5) and can take over.*/
             comment Verify /* Test */
         }
 

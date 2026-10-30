@@ -1,6 +1,6 @@
 # Tandem - Requirements Traceability Matrix
 
-Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by hand; change the model and re-run.
+Generated 2026-10-30 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by hand; change the model and re-run.
 
 ## Summary
 
@@ -8,9 +8,9 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 |---|---|
 | Requirements | 72 |
 | Requirements with at least one trace | 72 |
-| Scenario actions | 90 |
-| Actions covered by a requirement | 86 |
-| Trace links | 128 |
+| Scenario actions | 96 |
+| Actions covered by a requirement | 92 |
+| Trace links | 133 |
 | Broken references | 0 |
 
 ## 1. Requirements to scenarios
@@ -51,7 +51,7 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | END-3 | `releaseTargetOnEnd` | When the operator commands end flight, Tandem shall stop following the target. | Test | `EndFlight::releaseTarget` |
 | END-4 | `disarmAfterLanding` | When the drone has landed, Tandem shall disarm within 3s [TBR]. | Test | `EndFlight::disarm` |
 | END-5 | `showLandingSpot` | During descent, Tandem shall show the operator a live view of the area beneath the drone. | Demonstration | `EndFlight::showLandingSpot` |
-| END-6 | `holdIfPersonBelow` | During descent, if a person is detected beneath the drone, Tandem shall stop descending and hold its position. | Test | `EndFlight::stopDescent` |
+| END-6 | `holdIfPersonBelow` | During an operator-commanded descent, if a person is detected beneath the drone, Tandem shall stop descending and hold its position. | Test | `EndFlight::stopDescent` |
 | END-7 | `alertPersonBelow` | When Tandem stops a descent because a person is beneath it, Tandem shall alert the operator within 1s [TBR]. | Test | `EndFlight::alertPersonBelow` |
 
 ### Follow
@@ -62,19 +62,19 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | FLW-2 | `holdInsideZone` | While the drone is inside the framing zone, Tandem shall not move it to correct its offset. | Test | `FilmTarget::stayInZone` |
 | FLW-3 | `configurableFollowSettings` | Tandem shall allow the operator to set distance, angle, zone width and height within the ranges in [the table]. | Demonstration | `AdjustFraming::enterValues`<br>`AdjustFraming::showCurrentSettings` |
 | FLW-4 | `limitCameraToTargetDistance` | Tandem shall not accept settings whose combined camera-to-target distance exceeds 20m [TBR]. | Test | `AdjustFraming::rejectOutOfRange` |
-| FLW-5 | `keepTargetCentered` | While following or paused, with the target moving at up to 3 m/s [TBR], Tandem shall keep the target within ±10° [TBR] of the centre of the camera view. | Test | `FilmTarget::keepCentered`<br>`PauseFollowing::holdAndTrack` |
+| FLW-5 | `keepTargetCentered` | While following or paused, with the target moving at up to 3 m/s [TBR], Tandem shall keep the target within ±10° [TBR] of the centre of the camera view. | Test | `FilmTarget::keepCentered`<br>`PauseFollowing::keepCentered`<br>`AdjustFraming::keepCentered` |
 | FLW-6 | `noUnplannedFollowStop` | Tandem shall not stop or suspend following unless the target is lost or overlapped by another person, the operator pauses or ends the flight, the pilot takes manual control, or a failsafe triggers. | Test | `FilmTarget::repeatUntilStopped` |
 | FLW-7 | `freezeZoneWhenStationary` | While the target is stationary, Tandem shall keep the framing zone fixed relative to the target's last direction of travel. | Test | `FilmTarget::holdWhileStationary` |
-| FLW-8 | `lostAfterNotSeen` | Tandem shall treat the target as lost when it has not been seen for 2s [TBR]. | Test | `FilmTarget::reportTargetLost`<br>`PauseFollowing::targetLost`<br>`AdjustFraming::stopMoveOnTargetLost` |
-| FLW-9 | `returnToAcquisitionWhenLost` | When the target is lost, Tandem shall return to target acquisition. | Test | `FilmTarget::reportTargetLost`<br>`PauseFollowing::targetLost`<br>`AdjustFraming::stopMoveOnTargetLost`<br>`KeepPersonInView::targetLost` |
-| FLW-10 | `alertOperatorWhenLost` | When the target is lost, Tandem shall alert the operator within 1s [TBR]. | Test | `PauseFollowing::targetLost`<br>`FilmTarget::reportTargetLost` |
+| FLW-8 | `lostAfterNotSeen` | Tandem shall treat the target as lost when it has not been seen for 2s [TBR]. | Test | `FilmTarget::reportTargetLost`<br>`PauseFollowing::endPauseOnTargetLost`<br>`AdjustFraming::stopMoveOnTargetLost` |
+| FLW-9 | `returnToAcquisitionWhenLost` | When the target is lost, Tandem shall return to target acquisition. | Test | `FilmTarget::reportTargetLost`<br>`PauseFollowing::endPauseOnTargetLost`<br>`AdjustFraming::stopMoveOnTargetLost`<br>`KeepPersonInView::targetLost` |
+| FLW-10 | `alertOperatorWhenLost` | When the target is lost, Tandem shall alert the operator within 1s [TBR]. | Test | `FilmTarget::reportTargetLost` |
 | FLW-11 | `alertFallingBehind` | When the drone has been farther than the configured distance plus 2m [TBR] for more than 3s [TBR], Tandem shall alert the operator it is falling behind. | Test | `FilmTarget::reportFallingBehind` |
-| FLW-12 | `reacquireOnOverlap` | When another person overlaps the target in view, Tandem shall return to target acquisition. | Test | `FilmTarget::reportOverlap`<br>`PauseFollowing::overlap`<br>`KeepPersonInView::targetLost` |
+| FLW-12 | `reacquireOnOverlap` | When another person overlaps the target in view, Tandem shall return to target acquisition. | Test | `FilmTarget::reportOverlap`<br>`PauseFollowing::endPauseOnOverlap`<br>`KeepPersonInView::targetLost`<br>`AdjustFraming::stopMoveOnOverlap` |
 | FLW-13 | `rejectOutOfRangeSettings` | Tandem shall not accept a follow setting outside its allowed range. | Test | `AdjustFraming::rejectOutOfRange`<br>`PrepareForFlight::invalidSetting` |
 | FLW-14 | `showAllowedRange` | When Tandem refuses a follow setting, it shall show the operator the allowed range. | Demonstration | `AdjustFraming::rejectOutOfRange`<br>`PrepareForFlight::invalidSetting` |
 | FLW-17 | `gradualRepositioning` | When the follow settings change or following resumes, Tandem shall move the drone to the new position at no more than 2 m/s [TBR] relative to the target. | Test | `AdjustFraming::moveGradually`<br>`PauseFollowing::returnToZone` |
 | FLW-18 | `newestSettingsWins` | When the operator changes the follow settings during a move from a previous change, Tandem shall move toward the newest settings. | Test | `AdjustFraming::switchToNewest` |
-| FLW-19 | `holdOnPause` | When the operator commands pause, Tandem shall hold the drone's position. | Test | `PauseFollowing::selectPause`<br>`PauseFollowing::holdAndTrack` |
+| FLW-19 | `holdOnPause` | When the operator commands pause, Tandem shall hold the drone's position. | Test | `PauseFollowing::selectPause`<br>`PauseFollowing::holdPosition` |
 | FLW-20 | `resumeSameTarget` | When the operator commands resume, Tandem shall resume following the current target without re-approval. | Test | `PauseFollowing::selectResume`<br>`PauseFollowing::returnToZone` |
 
 ### Launch
@@ -89,7 +89,7 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 
 | ID | Name | Requirement | Verify | Traces to |
 |---|---|---|---|---|
-| MAN-1 | `manualOverrideStopsAutonomy` | In any flight state, when the pilot selects manual control on the RC, Tandem shall stop all autonomous movement within 0.5s [TBR]. | Test | `TakeManualControl::selectManual`<br>`TakeManualControl::stopAutonomy`<br>`KeepPersonInView::pilotTakeover`<br>`PauseFollowing::pilotTakeover`<br>`LaunchDrone::pilotTakeover`<br>`AcquireTarget::pilotTakeover`<br>`FilmTarget::pilotTakeover`<br>`AdjustFraming::handOverToPilot`<br>`EndFlight::handOverToPilot` |
+| MAN-1 | `manualOverrideStopsAutonomy` | In any flight state, when the pilot selects manual control on the RC, Tandem shall stop all autonomous movement within 0.5s [TBR]. | Test | `TakeManualControl::selectManual`<br>`TakeManualControl::stopAutonomy`<br>`KeepPersonInView::pilotTakeover`<br>`PauseFollowing::handOverToPilot`<br>`LaunchDrone::pilotTakeover`<br>`AcquireTarget::pilotTakeover`<br>`FilmTarget::pilotTakeover`<br>`AdjustFraming::handOverToPilot`<br>`EndFlight::handOverToPilot` |
 | MAN-2 | `holdUntilStickInput` | After the pilot takes manual control, Tandem shall hold position until it receives stick input from the RC. | Test | `TakeManualControl::holdUntilSticks` |
 | MAN-3 | `manualControlOnly` | While under manual control, Tandem shall move the drone only in response to pilot input, except when a failsafe triggers. | Test | `TakeManualControl::pilotFlies` |
 | MAN-4 | `reacquireAfterHandBack` | When the pilot hands control back to Tandem, Tandem shall return to target acquisition. | Test | `TakeManualControl::handBack` |
@@ -107,8 +107,8 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 
 | ID | Name | Requirement | Verify | Traces to |
 |---|---|---|---|---|
-| PRF-1 | `detectionRange` | Under nominal conditions, Tandem shall detect a person at a distance of up to 20m [TBR] camera-to-target in at least 90% [TBR] of video frames. | Test | `AcquireTarget::scanForPersons`<br>`FilmTarget::trackTarget` |
-| PRF-2 | `commandResponseTime` | Anywhere inside the geofence, Tandem shall begin acting on an operator command within 0.5s [TBR] of the operator sending it. | Test | `AdjustFraming::confirmReceived`<br>`PauseFollowing::confirmPaused`<br>`EndFlight::confirmEnd` |
+| PRF-1 | `detectionRange` | Under nominal conditions, Tandem shall detect a person at a distance of up to 20m [TBR] camera-to-target in at least 90% [TBR] of video frames. | Test | `AdjustFraming::trackTarget`<br>`PauseFollowing::trackTarget`<br>`AcquireTarget::scanForPersons`<br>`FilmTarget::trackTarget` |
+| PRF-2 | `commandResponseTime` | Anywhere inside the geofence, Tandem shall begin acting on an operator command within 0.5s [TBR] of the operator sending it. | Test | `AdjustFraming::confirmReceived`<br>`PauseFollowing::confirmPaused`<br>`PauseFollowing::confirmResumed`<br>`EndFlight::confirmEnd` |
 | PRF-3 | `followEndurance` | Under nominal conditions, starting from a full battery, Tandem shall be able to follow a target for at least 8 minutes [TBR] before the low-battery return (XC-7) triggers. | Analysis, Test | `KeepPersonInView` |
 | PRF-4 | `videoRange` | Under nominal conditions, Tandem shall provide usable video to the operator at up to 150m [TBR] from the ground control station. | Test | `KeepPersonInView` |
 | PRF-5 | `videoLatency` | Under nominal conditions, within video range (PRF-4), Tandem shall provide video to the operator with a latency of no more than 500ms. | Test (short range), Analysis (at range) | `KeepPersonInView`<br>`EndFlight::showLandingSpot` |
@@ -117,10 +117,10 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 
 | ID | Name | Requirement | Verify | Traces to |
 |---|---|---|---|---|
-| XC-1 | `confirmOperatorCommands` | Tandem shall confirm each operator command to the operator within 1 s [TBR]. | Test | `AdjustFraming::confirmReceived`<br>`PauseFollowing::confirmPaused`<br>`EndFlight::confirmEnd` |
-| XC-2 | `alertCommandNotApplied` | When an operator command is not confirmed within 1 s [TBR], Tandem shall tell the operator it was not applied. | Test | `AdjustFraming::reportNotReceived`<br>`PauseFollowing::pauseNotConfirmed`<br>`EndFlight::reportNotConfirmed` |
-| XC-3 | `respectKeepOutZone` | Tandem shall not move the drone into the target's keep-out zone. | Test | `FilmTarget::holdForKeepOut`<br>`AdjustFraming::routeAroundKeepOut`<br>`PauseFollowing::resumePathCrossesKeepOut` |
-| XC-4 | `holdWhileTargetInside` | While the target is inside the keep-out zone, Tandem shall hold position. | Test | `FilmTarget::holdForKeepOut`<br>`PauseFollowing::targetApproaches` |
+| XC-1 | `confirmOperatorCommands` | Tandem shall confirm each operator command to the operator within 1 s [TBR]. | Test | `AdjustFraming::confirmReceived`<br>`PauseFollowing::confirmPaused`<br>`PauseFollowing::confirmResumed`<br>`EndFlight::confirmEnd` |
+| XC-2 | `alertCommandNotApplied` | When an operator command is not confirmed within 1 s [TBR], Tandem shall tell the operator it was not applied. | Test | `AdjustFraming::reportNotReceived`<br>`PauseFollowing::reportPauseNotConfirmed`<br>`PauseFollowing::reportResumeNotConfirmed`<br>`EndFlight::reportNotConfirmed` |
+| XC-3 | `respectKeepOutZone` | Tandem shall not move the drone into the target's keep-out zone. | Test | `FilmTarget::holdForKeepOut`<br>`AdjustFraming::routeAroundKeepOut`<br>`PauseFollowing::routeAroundKeepOut` |
+| XC-4 | `holdWhileTargetInside` | While the target is inside the keep-out zone, Tandem shall hold position. | Test | `FilmTarget::holdForKeepOut` |
 | XC-5 | `stayInsideGeofence` | Tandem shall not move the drone outside the geofence. | Test | `KeepPersonInView::reachesGeofence` |
 | XC-6 | `alertAtGeofence` | When the drone reaches the geofence, Tandem shall alert the operator within 1s [TBR]. | Test | `KeepPersonInView::reachesGeofence` |
 | XC-7 | `lowBatteryReturn` | When the remaining battery reaches 25% [TBR], Tandem shall return to launch. | Test | `KeepPersonInView::lowBattery` |
@@ -202,14 +202,17 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | `showCurrentSettings` | 2. Tandem shows the current follow settings. | FLW-3 |
 | `enterValues` | 3. Operator enters and submits new values. | FLW-3 |
 | `confirmReceived` | 4. Tandem confirms the new values were received. | PRF-2, XC-1 |
-| `moveGradually` | 5. Drone moves gradually to the new position. | FLW-17 |
-| `settle` | 6. Drone settles at the new position; following continues. | FLW-1 |
+| `trackTarget` | 5. Tandem keeps tracking the target during the move. | PRF-1 |
+| `moveGradually` | 6. Drone moves gradually to the new position. | FLW-17 |
+| `keepCentered` | 7. Camera keeps the target centred during the move; 5-7 repeat until the drone is in position. | FLW-5 |
+| `settle` | 8. Drone settles at the new position; following continues. | FLW-1 |
 | `rejectOutOfRange` | A. Values out of range: not accepted; allowed range shown; nothing sent. | FLW-4, FLW-13, FLW-14 |
 | `reportNotReceived` | B. No confirmation (link problem): operator told the change was not received; settings unchanged. | XC-2 |
 | `routeAroundKeepOut` | C. Path to the new position crosses the keep-out zone: drone goes around the target at >= 5 m. | XC-3 |
 | `stopMoveOnTargetLost` | D. Target lost during the move: move stops -> FilmTarget handles the loss. | FLW-8, FLW-9 |
 | `switchToNewest` | E. Operator submits new values mid-move: they are checked and confirmed like any change; the drone abandons the old move and heads for the newest. | FLW-18 |
 | `handOverToPilot` | F. Any time: pilot takeover -> TakeManualControl. | MAN-1 |
+| `stopMoveOnOverlap` | G. Another person overlaps the target during the move: move stops -> FilmTarget handles the overlap. | FLW-12 |
 
 ### PauseFollowing
 
@@ -217,15 +220,18 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 |---|---|---|
 | `selectPause` | 1. Operator selects pause. | FLW-19 |
 | `confirmPaused` | 2. Tandem confirms following is paused. | PRF-2, XC-1 |
-| `holdAndTrack` | 3. Drone holds position; camera keeps tracking the target; drone rotates when the camera reaches its limit. | FLW-5, FLW-19 |
-| `selectResume` | 4. Operator selects resume. | FLW-20 |
-| `returnToZone` | 5. Drone returns gradually to the framing zone; following continues. | FLW-17, FLW-20 |
-| `pauseNotConfirmed` | A. Pause not confirmed (link problem): operator told; drone keeps following. | XC-2 |
-| `targetLost` | B. Target not seen for 2 s [TBR]: lost; operator alerted -> AcquireTarget. | FLW-8, FLW-9, FLW-10 |
-| `targetApproaches` | C. Target walks into the keep-out zone: drone holds position until they leave. | XC-4 |
-| `overlap` | D. Another person overlaps the target -> AcquireTarget. | FLW-12 |
-| `resumePathCrossesKeepOut` | E. On resume, path back crosses the keep-out zone: drone goes around the target at >= 5 m. | XC-3 |
-| `pilotTakeover` | F. Any time: pilot takeover -> TakeManualControl. | MAN-1 |
+| `trackTarget` | 3. Tandem keeps tracking the target. | PRF-1 |
+| `holdPosition` | 4. Drone holds position. | FLW-19 |
+| `keepCentered` | 5. Camera keeps the target centred; drone rotates when the camera reaches its limit. | FLW-5 |
+| `selectResume` | 6. Operator selects resume. | FLW-20 |
+| `confirmResumed` | 7. Tandem confirms following is resumed. | PRF-2, XC-1 |
+| `returnToZone` | 8. Drone returns gradually to the framing zone; following continues. | FLW-17, FLW-20 |
+| `reportPauseNotConfirmed` | A. Pause not confirmed (link problem): operator told; drone keeps following. | XC-2 |
+| `reportResumeNotConfirmed` | B. Resume not confirmed (link problem): operator told; drone stays paused. | XC-2 |
+| `endPauseOnTargetLost` | C. Target not seen for 2 s [TBR]: pause ends -> FilmTarget handles the loss. | FLW-8, FLW-9 |
+| `endPauseOnOverlap` | D. Another person overlaps the target: pause ends -> FilmTarget handles the overlap. | FLW-12 |
+| `routeAroundKeepOut` | E. On resume, path back crosses the keep-out zone: drone goes around the target at >= 5 m. | XC-3 |
+| `handOverToPilot` | F. Any time: pilot takeover -> TakeManualControl. | MAN-1 |
 
 ### EndFlight
 
@@ -243,7 +249,7 @@ Generated 2026-10-29 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | `reportNotConfirmed` | A. No confirmation (link problem): operator told; pilot can command return or land on the RC. | XC-2 |
 | `stopDescent` | B. Person detected beneath the drone: descent stops; drone holds. | END-6 |
 | `alertPersonBelow` | C. Operator alerted that a person is beneath the drone. | END-7 |
-| `abandonReturn` | D. Position lost during return: return abandoned; drone lands where it is (operator alerted and advised, XC-13/14). | XC-12, XC-13 |
+| `abandonReturn` | D. Position lost: commanded ending abandoned; emergency landing in place without person-below check -> KeepPersonInView gpsLost. | XC-12, XC-13 |
 | `handOverToPilot` | E. Any time: pilot takeover -> TakeManualControl. | MAN-1 |
 
 ### TakeManualControl
@@ -266,11 +272,11 @@ Whole use case: CON-3, PRF-3, PRF-4, PRF-5
 | `targetLost` | A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). | FLW-9, FLW-12 |
 | `pilotTakeover` | B. Any time: pilot takeover -> TakeManualControl. | MAN-1 |
 | `reachesGeofence` | C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. | XC-5, XC-6 |
-| `lowBattery` | D. Any time: low battery -> return to launch; operator alerted. | XC-7, XC-14 |
-| `criticalBattery` | E. Any time: critical battery -> land in place; operator alerted. | XC-8, XC-14 |
-| `groundLinkLost` | F. Any time: ground link lost -> hold; return to launch if not restored within 10 s. If restored, keep holding until the operator resumes. | XC-9, XC-10, XC-14, XC-15 |
-| `rcLinkLost` | G. Any time: RC link lost -> return to launch; operator alerted. | XC-11, XC-14 |
-| `gpsLost` | H. Any time: GPS lost -> land in place; operator alerted and advised to take over. | XC-12, XC-13, XC-14 |
+| `lowBattery` | D. Any time: low battery -> return to launch and land (no person-below check); operator alerted. | XC-7, XC-14 |
+| `criticalBattery` | E. Any time: critical battery -> land in place (no person-below check); operator alerted. | XC-8, XC-14 |
+| `groundLinkLost` | F. Any time: ground link lost -> hold; return to launch and land (no person-below check) if not restored within 10 s. If restored, keep holding until the operator resumes. | XC-9, XC-10, XC-14, XC-15 |
+| `rcLinkLost` | G. Any time: RC link lost -> return to launch and land (no person-below check); operator alerted. | XC-11, XC-14 |
+| `gpsLost` | H. Any time: GPS lost -> land in place (no person-below check); operator alerted and advised to take over. | XC-12, XC-13, XC-14 |
 
 ## 3. Gaps
 

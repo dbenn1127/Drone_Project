@@ -17,11 +17,15 @@ package TandemTraceability {
     dependency from noArmOnFailedPrechecks      to PrepareForFlight::prechecksFail;
     dependency from showPrecheckFailures        to PrepareForFlight::prechecksFail;
     dependency from showPrecheckFailures        to PrepareForFlight::notReady;
-    dependency from confirmSettingsBeforeArming to PrepareForFlight::setSettings;
+    dependency from confirmSettingsBeforeArming to PrepareForFlight::showSettings;
+    dependency from confirmSettingsBeforeArming to PrepareForFlight::confirmSettings;
+    dependency from noArmOnFailedPrechecks      to PrepareForFlight::arm;
+    dependency from confirmSettingsBeforeArming to PrepareForFlight::arm;
 
     // ---- Launch ----
     dependency from takeOffWhenArmed            to LaunchDrone::triggerLaunch;
     dependency from reachLaunchAltitude         to LaunchDrone::climb;
+    dependency from takeOffWhenArmed            to LaunchDrone::climb;
     dependency from reachLaunchAltitude         to LaunchDrone::hoverAtAltitude;
     dependency from alertAltitudeNotReached     to LaunchDrone::altitudeNotReached;
 
@@ -49,17 +53,17 @@ package TandemTraceability {
     dependency from limitCameraToTargetDistance to AdjustFraming::outOfRange;
     dependency from keepTargetCentered          to FilmTarget::keepCentered;
     dependency from keepTargetCentered          to PauseFollowing::holdAndTrack;
-    dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;
-    dependency from freezeZoneWhenStationary    to FilmTarget::targetStill;
-    dependency from lostAfterNotSeen            to FilmTarget::targetLost;
-    dependency from returnToAcquisitionWhenLost to FilmTarget::targetLost;
+    dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;   // Valid per SysML v2.1 (named loop = owned ActionUsage); Spec42 currently can't resolve (tool limitation).
+    dependency from freezeZoneWhenStationary    to FilmTarget::holdWhileStationary;
+    dependency from lostAfterNotSeen            to FilmTarget::reportTargetLost;
+    dependency from returnToAcquisitionWhenLost to FilmTarget::reportTargetLost;
     dependency from freezeZoneWhenStationary    to PauseFollowing::targetLost;
     dependency from lostAfterNotSeen            to PauseFollowing::targetLost;
     dependency from returnToAcquisitionWhenLost to PauseFollowing::targetLost;
     dependency from returnToAcquisitionWhenLost to KeepPersonInView::targetLost;
-    dependency from alertOperatorWhenLost       to FilmTarget::targetLost;
-    dependency from alertFallingBehind          to FilmTarget::fallingBehind;
-    dependency from reacquireOnOverlap          to FilmTarget::overlap;
+    dependency from alertOperatorWhenLost       to FilmTarget::reportTargetLost;
+    dependency from alertFallingBehind          to FilmTarget::reportFallingBehind;
+    dependency from reacquireOnOverlap          to FilmTarget::reportOverlap;
     dependency from reacquireOnOverlap          to PauseFollowing::overlap;
     dependency from reacquireOnOverlap          to KeepPersonInView::targetLost;
     dependency from rejectOutOfRangeSettings    to AdjustFraming::outOfRange;
@@ -110,10 +114,10 @@ package TandemTraceability {
     dependency from holdAfterLinkRestored       to KeepPersonInView::groundLinkLost;
 
     // XC-3/4: keep-out zone
-    dependency from respectKeepOutZone          to FilmTarget::targetApproaches;
+    dependency from respectKeepOutZone          to FilmTarget::holdForKeepOut;
     dependency from respectKeepOutZone          to AdjustFraming::pathCrossesKeepOut;
     dependency from respectKeepOutZone          to PauseFollowing::resumePathCrossesKeepOut;
-    dependency from holdWhileTargetInside       to FilmTarget::targetApproaches;
+    dependency from holdWhileTargetInside       to FilmTarget::holdForKeepOut;
     dependency from holdWhileTargetInside       to PauseFollowing::targetApproaches;
 
     // XC-5/6: geofence

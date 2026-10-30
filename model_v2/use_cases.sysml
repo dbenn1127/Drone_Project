@@ -10,9 +10,10 @@ package TandemUseCases {
         action powerOn                  { doc /* 1. Operator powers on the drone, ground station, and RC. */}
         action connectToGroundStation   { doc /* 2. Ground station connects to Tandem. */}
         action runPrechecks             { doc /* 3. Tandem runs its prechecks (see PRE-1 definition) and reports ready when all pass. */ }
-        action setSettings              { doc /* 4. Tandem shows the current follow settings; operator changes them if needed and confirms. */ }
-        action arm                      { doc /* 5. Operator arms. Ready for LaunchDrone. */ }
-
+        action showSettings             { doc /* 4. Tandem shows the current follow settings */ }
+        action confirmSettings          { doc /* 5. Operator changes them if needed and confirms. */}
+        action requestArm               { doc /* 6. Operator commands arm. */ }
+        action arm                      { doc /* 7. Tandem arms (motors enabled). Ready for LaunchDrone. */ }
         // --- alternates ---
         action noConnection             { doc /* A. Ground station cannot connect: operator told; Tandem does not report ready. */}
         action notReady                 { doc /* B. Something not ready (e.g. GPS still acquiring, camera not found): Tandem shows what, and waits. */}
@@ -31,21 +32,41 @@ package TandemUseCases {
         then powerOn;
         then loop action connecting {
             perform connectToGroundStation;
-            if not connected { perform noConnection; }
+            then if not connected { perform noConnection; }
         } until connected;
         then loop action precheck {
             perform runPrechecks;
-            if faultFound { perform prechecksFail; }
-            if not allReady and not faultFound { perform notReady; }
-        } until allReeady;
+            then if faultFound { perform prechecksFail; }
+            else if not allReady { perform notReady; }
+        } until allReady;
         then loop action settingUp {
-            perform setSettings;
-            if not settingsValid { perform invalidSetting; }
+            perform showSettings;
+            then perform confirmSettings; 
+            then if not settingsValid { perform invalidSetting; }
         } until settingsConfirmed;
+        then requestArm;
         then arm;
         then done;
-
     }
+
+        part prepareLanes {
+            use case prepare : PrepareForFlight;
+            part tandem : TandemSystem {
+                perform prepare.connectToGroundStation;
+                perform prepare.runPrechecks;
+                perform prepare.showSettings;
+                perform prepare.requestArm;
+                perform prepare.noConnection;
+                perform prepare.notReady;
+                perform prepare.invalidSetting;
+                perform prepare.prechecksFail;
+            }
+            part operator : OperatorPilot {
+                perform prepare.powerOn;
+                perform prepare.confirmSettings;
+                perform prepare.arm;
+            }
+        }
     
     use case def LaunchDrone {
         doc /* Operator commands launch; Tandem takes off and hovers at launch altitude. */
@@ -75,9 +96,21 @@ package TandemUseCases {
             perform climb;
         } until altitudeReached or climbTimedOut;
         then if climbTimedOut { perform altitudeNotReached; }
-        then hoverAtAltitude;
+            else { perform hoverAtAltitude; }
         then done;
     }
+
+        part launchLanes {
+            use case launch : LaunchDrone;
+            part tandem : TandemSystem {
+                perform launch.climb;
+                perform launch.hoverAtAltitude;
+                perform launch.altitudeNotReached;
+            }
+            part operator : OperatorPilot {
+                perform launch.triggerLaunch;
+            }
+        }
 
     use case def AcquireTarget {
         doc /* Tandem finds persons, proposes one, and the operator approves a target. Runs at the start and whenever the target is lost. */
@@ -109,24 +142,47 @@ package TandemUseCases {
         attribute personsInView : ScalarValues::Boolean; 
         attribute approved      : ScalarValues::Boolean;
         attribute stillInView   : ScalarValues::Boolean;
+        attribute pickedOther : ScalarValues::Boolean;   // picking another person also counts as approved
 
         // --- behavior ---
         first start;
         then loop action acquiring {
             loop action searching {
                 perform scanForPersons;
-                if not personsInView { perform noneFound; }
+                then if not personsInView { perform noneFound; }
             } until personsInView;
-            perform showPersons;
-            loop action asking {
+            then perform showPersons;
+            then loop action asking {
                 perform proposePerson;
+                then if pickedOther { perform otherPick; }
+                then if approved and not pickedOther { perform operatorApproves; }
+                then if not approved { perform reject; }
             } until approved;
-            if not stillInView { perform approvedPersonLeaves; }
+            then if not stillInView { perform approvedPersonLeaves; }
         } until approved and stillInView;
         then targetSet;
         then done;
-
     }
+
+        part acquireLanes {
+            use case acquire : AcquireTarget;
+            part tandem : TandemSystem {
+                perform acquire.holdPosition;     // throughout, not sequenced
+                perform acquire.scanForPersons;
+                perform acquire.showPersons;
+                perform acquire.proposePerson;
+                perform acquire.targetSet;
+                perform acquire.noneFound;
+                perform acquire.personLeaves;
+                perform acquire.noResponse;
+                perform acquire.approvedPersonLeaves;
+            }
+            part operator : OperatorPilot {
+                perform acquire.operatorApproves;
+                perform acquire.otherPick;
+                perform acquire.reject;
+            }
+        }
 
     use case def FilmTarget{
         doc /* Follow target and film based on commanded offsets until commanded to stop or target lost.*/
@@ -142,18 +198,56 @@ package TandemUseCases {
         action trackTarget          { doc /* 1. Tandem tracks the target's position and direction of travel. */}
         action stayInZone           { doc /* 2. Drone stays within the framing zone around the offset (default 8m, 180deg, 6m height). */}
         action keepCentered         { doc /* 3. Camera keeps the target centered. */}
-        action repeatUntilStopped   { doc /* 4. Repeats until the operator pauses or ends the flight. */}
-
+       
         // --- alternates ---
-        action targetStill          { doc /* A. Target stands still: drone holds its current position. */ }
-        action targetApproaches     { doc /* B. Target walks into the keep-out zone: drone holds position until they leave. */ }
-        action targetLost           { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
-        action fallingBehind        { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
-        action overlap              { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
-        action operatorAdjusts      { doc /* F. Operator adjusts framing -> AdjustFraming. */ }
-        action operatorPauses       { doc /* G. Operator pauses -> PauseFollowing. */ }
+        action holdWhileStationary  { doc /* A. Target stands still: drone holds its current position. */ }
+        action holdForKeepOut       { doc /* B. Target walks into the keep-out zone: drone holds position until they leave. */ }
+        action reportTargetLost     { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
+        action reportFallingBehind  { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
+        action reportOverlap        { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
         action pilotTakeover        { doc /* H. Any time: pilot takeover -> TakeManualControl. */ }
+
+        // --- attributes ---
+        attribute lost              : ScalarValues::Boolean;   // FLW-8
+        attribute overlapped        : ScalarValues::Boolean;   // FLW-12
+        attribute targetInKeepOut   : ScalarValues::Boolean;   // XC-3
+        attribute targetStationary  : ScalarValues::Boolean;   // FLW-7
+        attribute behindTooLong     : ScalarValues::Boolean;   // FLW-11
+        attribute adjustRequested   : ScalarValues::Boolean;
+        attribute pauseRequested    : ScalarValues::Boolean;
+        attribute endRequested      : ScalarValues::Boolean;
+
+        // ---behavior ---
+        first start;
+        then loop action repeatUntilStopped {
+            doc /* Repeats until the operator ends the flight, or the target is lost or overlapped. */
+            perform trackTarget;
+            then if targetInKeepOut { perform holdForKeepOut; }
+            else if targetStationary { perform holdWhileStationary; }
+            else { perform stayInZone; }
+            then perform keepCentered;
+            then if behindTooLong { perform reportFallingBehind; }
+            then if adjustRequested { perform adjust; }     // Valid per SysML v2.1 §8.3.17.14 / §8.3.25.2; Spec42 currently flags it (tool limitation).
+            then if pauseRequested  { perform pause; }      // Valid per SysML v2.1 §8.3.17.14 / §8.3.25.2; Spec42 currently flags it (tool limitation).
+        } until lost or overlapped or endRequested;
+        then if lost { perform reportTargetLost; }
+             else if overlapped { perform reportOverlap; }
+        then done;
     }
+
+        part filmLanes {
+            use case film : FilmTarget;
+            part tandem : TandemSystem {
+                perform film.trackTarget;
+                perform film.holdForKeepOut;
+                perform film.holdWhileStationary;
+                perform film.stayInZone;
+                perform film.keepCentered;
+                perform film.reportFallingBehind;
+                perform film.reportTargetLost;
+                perform film.reportOverlap;
+            }
+        }
 
     use case def AdjustFraming {
         doc /* While following, the operator changes the follow settings; the drone moves gradually to the new position without entering the keep-out zone. */

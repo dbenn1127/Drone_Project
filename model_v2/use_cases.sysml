@@ -1,5 +1,6 @@
 package TandemUseCases {
     private import Tandem::*;     // use everything defined in package Tandem
+    private import TandemFunctions::*;
 
     use case def PrepareForFlight {
         doc /* Operator powers on and sets up Tandem; Tandem confirms it is ready and is armed for launch. */
@@ -79,7 +80,7 @@ package TandemUseCases {
         // --- main flow ---
         action triggerLaunch            { doc /* 1. Operator triggers launch. */ }
         action climb                    { doc /* 2. Drone climbs. */ }
-        action hoverAtAltitude          { doc /* 3. Drone hovers at launch altitude. */ }
+        action hoverAtAltitude : HoldPosition   { doc /* 3. Drone hovers at launch altitude. */ }
 
         // --- alternates ---
         action handOverToPilot          { doc /* A. Any time: pilot takeover -> TakeManualControl. */ }
@@ -120,7 +121,7 @@ package TandemUseCases {
         objective                   { doc /* Target approved. */}
 
         // --- rule for the whole use case ---
-        action holdPosition         { doc /* Throughout: drone holds position, rotating in place only to scan. */ }
+        action holdPosition : HoldPosition  { doc /* Throughout: drone holds position, rotating in place only to scan. */ }
 
         // --- main flow ---
         action scanForPersons       { doc /* 1. Scan until persons are in view. */ }

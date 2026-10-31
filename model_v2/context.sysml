@@ -4,6 +4,7 @@ package Tandem {
 
 part def TandemSystem {
     doc /* drone + ground station + RC */
+    exhibit state modes : TandemStates::TandemModes;
 }
 part def OperatorPilot {
     doc /* runs the ground station, RC backup */

@@ -84,6 +84,7 @@ package TandemTraceability {
     dependency from keepTargetCentered          to AdjustFraming::keepCentered;
     // FLW-6 noUnplannedFollowStop
     dependency from noUnplannedFollowStop       to FilmTarget::repeatUntilStopped;   // Valid per SysML v2.1 (named loop = owned ActionUsage); Spec42 currently can't resolve (tool limitation).
+    dependency from noUnplannedFollowStop       to TandemStates::TandemModes::autonomous::following;
     // FLW-7 freezeZoneWhenStationary
     dependency from freezeZoneWhenStationary    to FilmTarget::holdWhileStationary;
     // FLW-8 lostAfterNotSeen

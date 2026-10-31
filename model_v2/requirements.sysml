@@ -391,7 +391,7 @@ package TandemRequirements {
         }
 
         requirement <'XC-12'> gpsLossLand : TandemRequirement {
-            doc /*When GPS position is lost, Tandem shall land in place. */
+            doc /*While flying autonomously, when GPS position is lost, Tandem shall land in place. */
             comment Definition /* GPS position lost: no valid position for 2s [TBR]. */
             comment Rationale /* Without position the drone cannot hold, return, or respect the geofence; landing ends the drift, and the pilot can still take over and fly it back by RC. */
             comment Verify /* Test */

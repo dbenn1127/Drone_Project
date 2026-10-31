@@ -10,8 +10,8 @@ Generated 2026-10-30 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | Requirements with at least one trace | 72 |
 | Scenario actions | 100 |
 | Actions covered by a requirement | 94 |
-| Trace links | 135 |
-| Broken references | 0 |
+| Trace links | 136 |
+| Broken references | 1 |
 
 ## 1. Requirements to scenarios
 
@@ -128,7 +128,7 @@ Generated 2026-10-30 by `tools/trace_matrix.py` from `model_v2/`. Do not edit by
 | XC-9 | `groundLinkLossHold` | When the ground link is lost, Tandem shall hold position. | Test | `KeepPersonInView::holdOnGroundLinkLoss` |
 | XC-10 | `groundLinkLossReturn` | If ground link is not re-established within 10s [TBR] of loss, Tandem shall return to launch. | Test | `KeepPersonInView::holdOnGroundLinkLoss` |
 | XC-11 | `rcLinkLossReturn` | When RC connection is lost, Tandem shall return to launch. | Test | `KeepPersonInView::returnOnRcLoss`<br>`TakeManualControl::returnOnRcLoss` |
-| XC-12 | `gpsLossLand` | When GPS position is lost, Tandem shall land in place. | Test | `KeepPersonInView::landOnGpsLoss`<br>`EndFlight::abandonReturn` |
+| XC-12 | `gpsLossLand` | While flying autonomously, when GPS position is lost, Tandem shall land in place. | Test | `KeepPersonInView::landOnGpsLoss`<br>`EndFlight::abandonReturn` |
 | XC-13 | `gpsLossAdviseTakeover` | When GPS position is lost, Tandem shall advise the operator to take manual control. | Demonstration | `KeepPersonInView::landOnGpsLoss`<br>`EndFlight::abandonReturn` |
 | XC-14 | `alertOnFailsafe` | When a failsafe triggers, Tandem shall alert the operator within 1s [TBR], stating which failsafe. | Test | `KeepPersonInView::returnOnLowBattery`<br>`KeepPersonInView::landOnCriticalBattery`<br>`KeepPersonInView::holdOnGroundLinkLoss`<br>`KeepPersonInView::returnOnRcLoss`<br>`KeepPersonInView::landOnGpsLoss` |
 | XC-15 | `holdAfterLinkRestored` | When the ground link is restored after a loss, Tandem shall hold position until the operator commands resume. | Demonstration | `KeepPersonInView::holdOnGroundLinkLoss` |
@@ -301,4 +301,4 @@ Some are deliberate (operator steps or references to other use cases).
 
 ### Broken references
 
-None.
+- `noUnplannedFollowStop` -> `TandemStates::TandemModes::autonomous::following`: no use case or action named `TandemStates::TandemModes::autonomous::following`

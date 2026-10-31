@@ -548,11 +548,11 @@ package TandemUseCases {
         then loop action manualFlight{
             if not sticksMoved { perform holdPosition; }
             else {
-                perform PilotFlies;
+                perform pilotFlies;
                 then perform followStickInput;
             }
         } until pilotHandsBack or rcLost;
-        then if rcLost { perform returnOnLoss; }
+        then if rcLost { perform returnOnRcLoss; }
             else {
                 perform handBack;
                 then perform confirmHandBack;
@@ -622,9 +622,9 @@ package TandemUseCases {
         then prepare;
         then launch;
         then loop action mission {
-            perform acquire;
-            then perform film;
-            then if not endRequested { perform returnToAcquisitionl }
+            perform acquire;        // Valid per SysML v2.1 §8.3.17.14 / §8.3.25.2; Spec42 currently flags it (tool limitation).
+            then perform film;      // Valid per SysML v2.1 §8.3.17.14 / §8.3.25.2; Spec42 currently flags it (tool limitation).
+            then if not endRequested { perform returnToAcquisition; }
         } until endRequested;
         then endFlight;
         then done;
@@ -634,11 +634,12 @@ package TandemUseCases {
         use case mission : KeepPersonInView;
         part tandem : TandemSystem {
             perform mission.returnToAcquisition;
-            perform mission.stopAtGeoFence;
+            perform mission.stopAtGeofence;
             perform mission.returnOnLowBattery;
             perform mission.landOnCriticalBattery;
             perform mission.holdOnGroundLinkLoss;
-            perform mission.returnonRcLoss;
-            perform mission landOnGpsLoss;
+            perform mission.returnOnRcLoss;
+            perform mission.landOnGpsLoss;
         }
     }
+}

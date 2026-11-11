@@ -13,6 +13,8 @@ package TandemFunctions {
     item def Waypoint;            // a point to fly to: position and height
     item def CameraPointing;      // where the camera is pointing: pan, tilt
     item def TargetProposal;      // the one person Tandem suggests as the target
+    item def TargetDesignation;   // which person is the target (or none).
+    item def ApprovedPerson;      // a person the operator approved who is confirmed in view
 
 
     // ===================== seeing =====================
@@ -26,6 +28,7 @@ package TandemFunctions {
     action def TrackTarget {
         doc /* Follow the approved target from frame to frame and work out where it is and where it is going. */
         in item detections : PersonDetections;
+        in item designation : TargetDesignation;     // which person to follow
         out item track : TargetTrack;
         out attribute targetLost       : Boolean;    // FLW-8
         out attribute targetOverlapped : Boolean;    // FLW-12
@@ -38,6 +41,12 @@ package TandemFunctions {
         in item position  : DronePosition;      // the drone's heading: the camera aims relative to it
         out item pointing : CameraPointing;     // to the camera mount
         out attribute atPanLimit : Boolean;     // camera can't turn further, so the drone must rotate
+    }
+
+    action def CaptureVideo {
+        doc /* Turn what the camera sees into a stream of video frames. */
+        in item appearance : PersonAppearance;     // context item: light from the people in view
+        out item image     : VideoFrame;           // to DetectPersons and StreamVideo
     }
 
     // ===================== moving the drone =====================
@@ -94,19 +103,10 @@ package TandemFunctions {
     }
 
     action def Land {
-        doc /* Descend at no more than the landing rate until touchdown; works with ot without a position fix. */
+        doc /* Descend at no more than the landing rate until touchdown; works with or without a position fix. */
         in attribute descentLimit : ISQ::SpeedValue;    // CON-1
         out item setpoint : MotionSetpoint;
         out attribute touchedDown : Boolean;
-    }
-
-    action def LimitMotion {
-        doc /* Adjust a requested setpoint so the drone never enters the target's keep-out zone, never leaves the geofence, and never exceeds the speed limit. */
-        in item requested : MotionSetpoint;     // from HoldPosition / FollowTarget / FlyToPosition…
-        in item position  : DronePosition;      // to know where the fence is relative to the drone
-        in item track     : TargetTrack;        // to know where the target (and its keep-out) is
-        out item limited  : MotionSetpoint;     // to FlyTheDrone
-        out attribute atGeofence : Boolean;     // XC-6: triggers the operator alert
     }
 
     action def FlyByStick {
@@ -123,6 +123,15 @@ package TandemFunctions {
         out attribute motorsEnabled : Boolean;      // to FlyTheDrone: no thrust unless armed
     }
 
+    action def EnforceGeofence {
+        doc /* Stop any requested motion at the geofence edge, in every flight mode including manual. */
+        in item requested : MotionSetpoint;     // from HoldPosition / FlyToPosition / Land / FlyByStick
+        in item position  : DronePosition;
+        in item home      : Waypoint;           // fence centre = launch point (RecordLaunchPoint, later)
+        out item limited  : MotionSetpoint;     // to FlyTheDrone
+        out attribute atGeofence : Boolean;     // XC-6
+    }
+
     // ===================== talking to the operator =====================
 
     action def ShowPersons {
@@ -132,10 +141,10 @@ package TandemFunctions {
     }
 
     action def ProposeTarget {
-        doc /* Pick one displayed person to suggest as the target (ACQ-4: selection rule TBD, e.g. nearest; after an overlap te person most likely to be the previous target), never re-proposing someone rejected in this acquisition (ACQ-5).
+        doc /* Pick one displayed person to suggest as the target (ACQ-4: selection rule TBD, e.g. nearest; after an overlap the person most likely to be the previous target), never re-proposing someone rejected in this acquisition (ACQ-5). */
         in item detections : PersonDetections;      // who is in view
         in item lastTrack : TargetTrack;            // the previous target, for the after overlap best guess
-        out item proposal : TaretProposal;
+        out item proposal : TargetProposal;
     }
 
     action def ShowSettings {
@@ -144,13 +153,79 @@ package TandemFunctions {
         out item display : GroundDisplay;           // context item: to the operator
     }
 
+    action def StreamVideo {
+        doc /* Send live video to the operator: usable at up to 150 m from the ground station (PRF-4), with no more than 500 ms of delay (PRF-5); during descent it shows the area beneath the drone (END-5). */
+        in item image   : VideoFrame;
+        out item display : GroundDisplay;          // context item: to the operator
+    }
+
+    action def MaintainLinks {
+        doc /* Establish the ground-station link, and watch it and the RC link (XC-9: ground link lost after 5 s [TBR] without data; XC-11: RC link lost after 1 s [TBR]; XC-15: report when the ground link is restored). */
+        in item rc : RCInput;                       // context item: the RC signal being watched
+        out attribute groundLinkUp : Boolean;
+        out attribute rcLinkUp     : Boolean;
+    }
+
     // ===================== deciding and checking =====================
 
+    action def ValidateSettings {
+        doc /* Check the follow settings the operator enters against their allowed ranges (FLW-13) and the 20 m camera-to-target limit (FLW-4). Accepted values become the current settings; rejected values change nothing, and the allowed range is shown (FLW-14). Keeps the last accepted settings between flights (PRE-4). */
+        in item requested  : OperatorCommand;      // the values the operator typed (context item)
+        out item settings  : FollowSettings;       // the current, accepted settings
+        out attribute valuesValid : Boolean;       // FLW-13: ends AdjustFraming's entering loop
+        out item display   : GroundDisplay;        // FLW-14: the allowed range, when rejected
+    }
+
+    action def CheckApproval {
+        doc /* Accept the operator's approval only if that person is still in view (ACQ-11); otherwise refuse it. */
+        in item approval   : OperatorCommand;      // approve, or pick another person
+        in item proposal   : TargetProposal;       // who "approve" refers to
+        in item detections : PersonDetections;     // who is in view right now
+        out item approved  : ApprovedPerson;       // only when the check passes
+        out attribute stillInView : Boolean;       // ACQ-11
+    }
+
+    action def DesignateTarget {
+        doc /* Make the approved person the target (ACQ-7), and release the target when the flight ends (END-3). */
+        in item approved     : ApprovedPerson;
+        out item designation : TargetDesignation;  // to TrackTarget
+    }
     
+    action def RunPrechecks {
+        doc /* Check everything needed for a safe flight is ready (PRE-1: ground link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks), report ready only when all pass, and show what is not ready or has failed (PRE-3). */
+        in attribute groundLinkUp : Boolean;          // from MaintainLinks
+        in attribute rcLinkUp     : Boolean;          // from MaintainLinks
+        in attribute gpsLost      : Boolean;          // from EstimatePosition
+        in item image             : VideoFrame;       // from CaptureVideo: are frames arriving?
+        in attribute batteryOk    : Boolean;          // from MonitorBattery
+        out attribute prechecksPassed : Boolean;      // PRE-1
+        out attribute faultFound      : Boolean;      // PRE-2: a real fault, not just "not ready yet"
+        out item display : GroundDisplay;             // PRE-3: what is not ready, or failed
+    }
+
+    action def AvoidKeepOut {
+        doc /* Keep the drone at least 5 m from the target: if the straight path to the destination crosses the keep-out zone, replace it with a waypoint that goes around. */
+        in item position    : DronePosition;
+        in item track       : TargetTrack;
+        in item destination : Waypoint;
+        out item routed     : Waypoint;              // to FlyToPosition
+        out attribute pathBlocked     : Boolean;     // XC-3
+        out attribute targetInKeepOut : Boolean;     // XC-3
+    }
+
     // ===================== hidden (no use case step, but needed) =====================
+    
     action def EstimatePosition {
         doc /* Work out where the drone is from GPS and its own sensors. */
+        in item gnss : GNSSSignal;                   // context item: from the satellites
         out item position : DronePosition;
         out attribute gpsLost : Boolean;             // XC-12
+    }
+
+    action def MonitorBattery {
+        doc /* Track the battery's remaining charge by counting energy used (not voltage), and flag when it is below the arming minimum, low, or critical (PRE-1; XC-7: 25% [TBR]; XC-8: 10% [TBR]). */
+        out attribute batteryOk       : Boolean;    // PRE-1: enough to arm
+        out attribute lowBattery      : Boolean;    // XC-7: return to launch
+        out attribute criticalBattery : Boolean;    // XC-8: land now
     }
 }

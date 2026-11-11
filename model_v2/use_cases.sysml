@@ -9,21 +9,21 @@ package TandemUseCases {
         objective                       { doc /* Tandem is armed and ready to launch, with the following settings the operator chose. */}
         // --- main flow ---
         action powerOn                  { doc /* 1. Operator powers on the drone, ground station, and RC. */}
-        action connectToGroundStation   { doc /* 2. Ground station connects to Tandem. */}
-        action runPrechecks             { doc /* 3. Tandem runs its prechecks (see PRE-1 definition) and reports ready when all pass. */ }
+        action connectToGroundStation   : MaintainLinks     { doc /* 2. Ground station connects to Tandem. */}
+        action runPrechecks             : RunPrechecks      { doc /* 3. Tandem runs its prechecks (see PRE-1 definition) and reports ready when all pass. */ }
         action showSettings             : ShowSettings      { doc /* 4. Tandem shows the current follow settings */ }
         action confirmSettings          { doc /* 5. Operator changes them if needed and confirms. */}
         action requestArm               { doc /* 6. Operator commands arm. */ }
         action arm                      : ControlArming     { doc /* 7. Tandem arms (motors enabled). Ready for LaunchDrone. */ }
         // --- alternates ---
-        action noConnection             { doc /* A. Ground station cannot connect: operator told; Tandem does not report ready. */}
-        action notReady                 { doc /* B. Something not ready (e.g. GPS still acquiring, camera not found): Tandem shows what, and waits. */}
-        action invalidSetting           { doc /* C. Setting out of range: not accepted; allowed range shown. */}
-        action prechecksFail            { doc /* D. Prechecks fail (e.g. battery too low): arming refused; failures shown. */}
+        action noConnection             : RunPrechecks      { doc /* A. Ground station cannot connect: operator told; Tandem does not report ready. */}
+        action notReady                 : RunPrechecks      { doc /* B. Something not ready (e.g. GPS still acquiring, camera not found): Tandem shows what, and waits. */}
+        action invalidSetting           : ValidateSettings  { doc /* C. Setting out of range: not accepted; allowed range shown. */}
+        action prechecksFail            : RunPrechecks      { doc /* D. Prechecks fail (e.g. battery too low): arming refused; failures shown. */}
 
         // --- attributes ---
         attribute connected         : ScalarValues::Boolean;
-        attribute allReady          : ScalarValues::Boolean;
+        attribute prechecksPassed   : ScalarValues::Boolean;
         attribute faultFound        : ScalarValues::Boolean;
         attribute settingsConfirmed : ScalarValues::Boolean;
         attribute settingsValid     : ScalarValues::Boolean;
@@ -38,8 +38,8 @@ package TandemUseCases {
         then loop action precheck {
             perform runPrechecks;
             then if faultFound { perform prechecksFail; }
-            else if not allReady { perform notReady; }
-        } until allReady;
+            else if not prechecksPassed { perform notReady; }
+        } until prechecksPassed;
         then loop action settingUp {
             perform showSettings;
             then perform confirmSettings; 
@@ -121,24 +121,25 @@ package TandemUseCases {
         objective                   { doc /* Target approved. */}
 
         // --- rule for the whole use case ---
-        action holdPosition : HoldPosition  { doc /* Throughout: drone holds position, rotating in place only to scan. */ }
+        action holdPosition         : HoldPosition      { doc /* Throughout: drone holds position, rotating in place only to scan. */ }
 
         // --- main flow ---
         action scanForPersons       : DetectPersons     { doc /* 1. Scan until persons are in view. */ }
         action showPersons          : ShowPersons       { doc /* 2. Show all persons to the operator. */ }
-        action proposePerson        : ProposePerson   { doc /* 3. Propose one person. */ }
-        action operatorApproves     { doc /* 4. Operator approves. */ }
-        action targetSet            { doc /* 5. Target is set. */ }
+        action proposePerson        : ProposeTarget     { doc /* 3. Propose one person. */ }
+        action operatorApproves                         { doc /* 4. Operator approves. */ }
+        action checkApproval        : CheckApproval     { doc /* 5. Tandem checks the approved person is still in view. */ }
+        action targetSet            : DesignateTarget   { doc /* 6. Target is set. */ }
 
         // --- alternates ---
-        action reject               { doc /* A. At 4, operator rejects -> propose another, or scan if none left in view. */ }
-        action otherPick            { doc /* B. At 4, operator selects a different person -> approve that one. */ }
-        action noneFound            { doc /* C. Full scan finds no one -> keep scanning and alert operator. */ }
-        action personLeaves         : ShowPersons       { doc /* D. Person walks out of view before the operator decides -> removed from display; carry on. */ }
-        action noResponse           { doc /* E. Operator does not respond -> keep waiting (never auto-approve). */ }
-        action approvedPersonLeaves { doc /* F. Person walks out of view at the moment of approval -> approval refused; operator told why. */ }
-        action handOverToPilot      { doc /* G. Any time: pilot takeover -> TakeManualControl. */ }
-
+        action reject                               { doc /* A. At 4, operator rejects -> propose another, or scan if none left in view. */ }
+        action otherPick                            { doc /* B. At 4, operator selects a different person -> approve that one. */ }
+        action noneFound                            { doc /* C. Full scan finds no one -> keep scanning and alert operator. */ }
+        action personLeaves : ShowPersons           { doc /* D. Person walks out of view before the operator decides -> removed from display; carry on. */ }
+        action noResponse                           { doc /* E. Operator does not respond -> keep waiting (never auto-approve). */ }
+        action explainRefusal                       { doc /* F. Approved person no longer in view: approval refused; operator told why. */ }
+        action handOverToPilot                      { doc /* G. Any time: pilot takeover -> TakeManualControl. */ }
+        
         // --- attributes ---
         attribute personsInView : ScalarValues::Boolean; 
         attribute approved      : ScalarValues::Boolean;
@@ -159,7 +160,8 @@ package TandemUseCases {
                 then if approved and not pickedOther { perform operatorApproves; }
                 then if not approved { perform reject; }
             } until approved;
-            then if not stillInView { perform approvedPersonLeaves; }
+            then perform checkApproval;
+            then if not stillInView { perform explainRefusal; }
         } until approved and stillInView;
         then targetSet;
         then done;
@@ -176,7 +178,8 @@ package TandemUseCases {
                 perform acquire.noneFound;
                 perform acquire.personLeaves;
                 perform acquire.noResponse;
-                perform acquire.approvedPersonLeaves;
+                perform acquire.checkApproval;
+                perform acquire.explainRefusal;
             }
             part operator : OperatorPilot {
                 perform acquire.operatorApproves;
@@ -213,7 +216,7 @@ package TandemUseCases {
         // --- alternates ---
         action holdWhileStationary  : HoldPosition  { doc /* A. Target stands still: drone holds its current position. */ }
         action holdForKeepOut       : HoldPosition  { doc /* B. Target walks into the keep-out zone: drone holds position until they leave. */ }
-        action reportTargetLost     : ReportTargetLost           { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
+        action reportTargetLost     { doc /* C. Target not seen for 2 s [TBR]: target lost; operator alerted; drone holds; exit to AcquireTarget. */ }
         action reportFallingBehind  { doc /* D. Target outruns the drone: drone keeps chasing at top speed; if too far for more than 3 s, operator alerted it is falling behind; if no longer seen -> C. */ }
         action reportOverlap        { doc /* E. Another person overlaps the target: return to AcquireTarget. */ }
         action handOverToPilot      { doc /* H. Any time: pilot takeover -> TakeManualControl. */ }
@@ -278,10 +281,10 @@ package TandemUseCases {
         action keepCentered         : PointCamera           { doc /* 7. Camera keeps the target centred during the move; 5-7 repeat until the drone is in position. */ }
         action settle               { doc /* 8. Drone settles at the new position; following continues. */ }
 
-                // --- alternates ---
-        action rejectOutOfRange     { doc /* A. Values out of range: not accepted; allowed range shown; nothing sent. */ }
+        // --- alternates ---
+        action rejectOutOfRange     : ValidateSettings      { doc /* A. Values out of range: not accepted; allowed range shown; nothing sent. */ }
         action reportNotReceived    { doc /* B. No confirmation (link problem): operator told the change was not received; settings unchanged. */ }
-        action routeAroundKeepOut   { doc /* C. Path to the new position crosses the keep-out zone: drone goes around the target at >= 5 m. */ }
+        action routeAroundKeepOut   : AvoidKeepOut          { doc /* C. Path to the new position crosses the keep-out zone: drone goes around the target at >= 5 m. */ }
         action stopMoveOnTargetLost { doc /* D. Target lost during the move: move stops -> FilmTarget handles the loss. */ }
         action switchToNewest       : ComputeFramingPosition { doc /* E. Operator submits new values mid-move: they are checked and confirmed like any change; the drone abandons the old move and heads for the newest. */ }
         action handOverToPilot      { doc /* F. Any time: pilot takeover -> TakeManualControl. */ }
@@ -443,10 +446,10 @@ package TandemUseCases {
         // --- main flow ---
         action selectEndFlight      { doc /* 1. Operator selects end flight: return to launch or land here. */ }
         action confirmEnd           { doc /* 2. Tandem confirms the command. */ }
-        action releaseTarget        { doc /* 3. Tandem stops following the target. */ }
+        action releaseTarget        : DesignateTarget   { doc /* 3. Tandem stops following the target. */ }
         action returnToLaunch       : FlyToPosition     { doc /* 4a. Return to launch: drone flies to the launch point at return altitude (6 m [TBR]). */ }
         action stopInPlace          : HoldPosition      { doc /* 4b. Land here: drone stops and holds where it is. */ }
-        action showLandingSpot      { doc /* 5. During descent, Tandem shows the operator the area beneath the drone. */ }
+        action showLandingSpot      : StreamVideo       { doc /* 5. During descent, Tandem shows the operator the area beneath the drone. */ }
         action checkLandingSpot     { doc /* 6. Operator watches the landing spot; takes over if it is not clear. */ }
         action descend              : Land              { doc /* 7. Drone descends. */ }
         action disarm               : ControlArming     { doc /* 8. Drone disarms once landed. */ }
@@ -525,16 +528,16 @@ package TandemUseCases {
         // --- main flow ---
         action selectManual         { doc /* 1. Pilot selects manual control on the RC. */ }
         action stopAutonomy         { doc /* 2. Tandem stops all autonomous movement. */ }
-        action confirmManual        { doc /* Tandem shows the operator that manual control is active. */}
-        action holdPosition         : HoldPosition      { doc /* 3. Drone holds position until the pilot gives stick inputs. */ }
-        action pilotFlies           { doc /* 4. Pilot flies the drone by RC. */ }
-        action followStickInput     : FlyByStick        { doc /* 5. Tandem moves the drone only as the stick commands. */}
+        action confirmManual        { doc /* 3. Tandem shows the operator that manual control is active. */}
+        action holdPosition         : HoldPosition      { doc /* 4. Drone holds position until the pilot gives stick inputs. */ }
+        action pilotFlies           { doc /* 5. Pilot flies the drone by RC. */ }
+        action followStickInput     : FlyByStick        { doc /* 6. Tandem moves the drone only as the stick commands. */}
 
         // --- alternates ---
         action returnOnRcLoss       : FlyToPosition    { doc /* A. RC link lost during manual flight: Tandem returns to launch (RC-loss failsafe). */ }
         action handBack             { doc /* B. Pilot hands control back to Tandem -> AcquireTarget (operator re-approves the target). */ }
         action confirmHandBack      { doc /* C. Tandem shows the operator that control is back with Tandem. */}
-        action resumeAcquisition    { doc /* d. Tandem returns to target acquisition (operator reapproves the target). */}
+        action resumeAcquisition    { doc /* D. Tandem returns to target acquisition (operator reapproves the target). */}
 
         // --- attributes ---
         attribute sticksMoved       : ScalarValues::Boolean;
@@ -609,7 +612,7 @@ package TandemUseCases {
         // --- alternates ---
         action returnToAcquisition      { doc /* A. Target lost or overlapped during FilmTarget -> back to AcquireTarget, then FilmTarget again (repeat as needed). */ }
         action handOverToPilot          { doc /* B. Any time: pilot takeover -> TakeManualControl. */ }
-        action stopAtGeofence           : LimitMotion       { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
+        action stopAtGeofence           : EnforceGeofence   { doc /* C. Any time: drone reaches the geofence -> stops at the edge, keeps the target in view; operator alerted. Following continues if the target comes back inside. */ }
         action returnOnLowBattery       : FlyToPosition     { doc /* D. Any time: low battery -> return to launch and land (no person-below check); operator alerted. */ }
         action landOnCriticalBattery    : Land              { doc /* E. Any time: critical battery -> land in place (no person-below check); operator alerted. */ }
         action holdOnGroundLinkLoss     : HoldPosition      { doc /* F. Any time: ground link lost -> hold; return to launch and land (no person-below check) if not restored within 10 s. If restored, keep holding until the operator resumes. */ }

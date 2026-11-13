@@ -8,12 +8,15 @@ package TandemFunctions {
     item def PersonDetections;    // the people found in a frame (boxes)
     item def TargetTrack;         // the target's position and direction of travel
     item def DronePosition;       // where the drone is: position, height, heading
+    item def DroneVelocity;       // how fast and which way the drone is moving
+    item def DroneAttitude;       // how the drone is tilted: roll, pitch (from the IMU)
+    item def HeadingRequest;     // which way the drone should face
     item def MotionSetpoint;      // where/how fast the drone should go next
     item def FollowSettings;      // distance, angle, zone width, height (FLW-3; ranges in step 7)
     item def Waypoint;            // a point to fly to: position and height
     item def CameraPointing;      // where the camera is pointing: pan, tilt
     item def TargetProposal;      // the one person Tandem suggests as the target
-    item def TargetDesignation;   // which person is the target (or none).
+    item def TargetDesignation;   // which person is the target (or none)
     item def ApprovedPerson;      // a person the operator approved who is confirmed in view
 
 
@@ -29,6 +32,8 @@ package TandemFunctions {
         doc /* Follow the approved target from frame to frame and work out where it is and where it is going. */
         in item detections : PersonDetections;
         in item designation : TargetDesignation;     // which person to follow
+        in item pointing    : CameraPointing;        // where the camera is aimed
+        in item position    : DronePosition;         // where the drone is: together they place the target in the world
         out item track : TargetTrack;
         out attribute targetLost       : Boolean;    // FLW-8
         out attribute targetOverlapped : Boolean;    // FLW-12
@@ -36,11 +41,11 @@ package TandemFunctions {
     }
 
     action def PointCamera {
-        doc /* Keep the target centred in the camera view (FLW-5: within ±10° [TBR]), within the camera's pan/tilt limits; when the camera reaches a limit, signal that the drone must turn. */
+        doc /* Aim the camera: keep the target centred (FLW-5: within ±10° [TBR]), or sweep to scan when there is no target; when the gimbal reaches its limit, ask the drone to turn. */
         in item track     : TargetTrack;
         in item position  : DronePosition;      // the drone's heading: the camera aims relative to it
         out item pointing : CameraPointing;     // to the camera mount
-        out attribute atPanLimit : Boolean;     // camera can't turn further, so the drone must rotate
+        out item turn     : HeadingRequest;     // to HoldPosition: face this way
     }
 
     action def CaptureVideo {
@@ -51,8 +56,9 @@ package TandemFunctions {
 
     // ===================== moving the drone =====================
     action def HoldPosition {
-        doc /* Keep the drone at its current position and height. */
+        doc /* Keep the drone at its current position and height, facing the requested heading (or its current heading if none is requested). */
         in item position  : DronePosition;
+        in item turn      : HeadingRequest;     // from PointCamera
         out item setpoint : MotionSetpoint;
     }
 
@@ -63,12 +69,12 @@ package TandemFunctions {
         in item settings  : FollowSettings;
         out item setpoint : MotionSetpoint;
         out attribute fallingBehind : Boolean;        // FLW-11
-
+    
         // --- made of: compute where to be, then fly there ---
         action compute : ComputeFramingPosition {
-            in item :>> track    = FollowTarget::track;
-            in item :>> settings = FollowTarget::settings;
-            in item :>> position = FollowTarget::position;
+            in item  :>> track    = FollowTarget::track;
+            in item  :>> settings = FollowTarget::settings;
+            in item  :>> position = FollowTarget::position;
             out item :>> destination;
             out attribute :>> fallingBehind = FollowTarget::fallingBehind;
         }
@@ -127,9 +133,17 @@ package TandemFunctions {
         doc /* Stop any requested motion at the geofence edge, in every flight mode including manual. */
         in item requested : MotionSetpoint;     // from HoldPosition / FlyToPosition / Land / FlyByStick
         in item position  : DronePosition;
-        in item home      : Waypoint;           // fence centre = launch point (RecordLaunchPoint, later)
+        in item home      : Waypoint;           // fence centre = launch point, from RecordLaunchPoint
         out item limited  : MotionSetpoint;     // to FlyTheDrone
         out attribute atGeofence : Boolean;     // XC-6
+    }
+
+    action def FlyTheDrone {
+        doc /* Keep the drone stable and drive the motors so it moves as the setpoint asks; no thrust unless the motors are enabled. Its effect is the drone's motion, sensed again by EstimateDroneState. */
+        in item setpoint : MotionSetpoint;          // limited, from EnforceGeofence
+        in item velocity : DroneVelocity;           // to follow a speed setpoint
+        in item attitude : DroneAttitude;           // to stay level
+        in attribute motorsEnabled : Boolean;       // from ControlArming
     }
 
     // ===================== talking to the operator =====================
@@ -166,6 +180,31 @@ package TandemFunctions {
         out attribute rcLinkUp     : Boolean;
     }
 
+    action def AcknowledgeCommand {
+        doc /* Reply to every command the operator or pilot sends: confirm it was received and acted on, or say it was not received, or refused and why (XC-1, XC-2). */
+        in item command : OperatorCommand;          // context item: pause, resume, end, approve, settings…
+        in item rc      : RCInput;                  // context item: pilot takeover / hand-back switch
+        in attribute accepted : Boolean;            // whether Tandem acted on it (e.g. stillInView, state guard)
+        out attribute acknowledged : Boolean;       // XC-1/XC-2: confirmation got through in time
+        out item display : GroundDisplay;           // context item: the confirmation, or what failed and why
+    }
+
+    action def AlertOperator {
+        doc /* Tell the operator about anything they need to know but didn't ask for, by priority: warnings (act now) over cautions over advisories. Each alert stays up until its condition clears. */
+        in attribute launchStalled   : Boolean;     // LCH-3: altitude not reached
+        in attribute personsInView   : Boolean;     // none found (acquiring); person below (descent)
+        in attribute targetLost      : Boolean;     // FLW-8
+        in attribute targetOverlapped: Boolean;     // FLW-12
+        in attribute fallingBehind   : Boolean;     // FLW-11
+        in attribute atGeofence      : Boolean;     // XC-6
+        in attribute lowBattery      : Boolean;     // XC-7
+        in attribute criticalBattery : Boolean;     // XC-8
+        in attribute rcLinkUp        : Boolean;     // XC-11
+        in attribute groundLinkUp    : Boolean;     // XC-9 / XC-15: shown once the link is back
+        in attribute gpsLost         : Boolean;     // XC-12: advise taking over
+        out item display : GroundDisplay;           // context item: to the operator
+    }
+
     // ===================== deciding and checking =====================
 
     action def ValidateSettings {
@@ -195,7 +234,7 @@ package TandemFunctions {
         doc /* Check everything needed for a safe flight is ready (PRE-1: ground link, RC link, GPS position, camera, battery above minimum [TBR], flight-safety checks), report ready only when all pass, and show what is not ready or has failed (PRE-3). */
         in attribute groundLinkUp : Boolean;          // from MaintainLinks
         in attribute rcLinkUp     : Boolean;          // from MaintainLinks
-        in attribute gpsLost      : Boolean;          // from EstimatePosition
+        in attribute gpsLost      : Boolean;          // from EstimateDroneState
         in item image             : VideoFrame;       // from CaptureVideo: are frames arriving?
         in attribute batteryOk    : Boolean;          // from MonitorBattery
         out attribute prechecksPassed : Boolean;      // PRE-1
@@ -215,10 +254,12 @@ package TandemFunctions {
 
     // ===================== hidden (no use case step, but needed) =====================
     
-    action def EstimatePosition {
-        doc /* Work out where the drone is from GPS and its own sensors. */
+    action def EstimateDroneState {
+        doc /* Work out where the drone is, how it is moving and how it is tilted, from GPS and its own sensors. */
         in item gnss : GNSSSignal;                   // context item: from the satellites
         out item position : DronePosition;
+        out item velocity : DroneVelocity;
+        out item attitude : DroneAttitude;
         out attribute gpsLost : Boolean;             // XC-12
     }
 
@@ -227,5 +268,21 @@ package TandemFunctions {
         out attribute batteryOk       : Boolean;    // PRE-1: enough to arm
         out attribute lowBattery      : Boolean;    // XC-7: return to launch
         out attribute criticalBattery : Boolean;    // XC-8: land now
+    }
+
+    action def BroadcastRemoteID {
+        doc /* Broadcast the drone's identity, position, altitude, velocity, takeoff location, time and emergency status for the whole flight (CON-3; 14 CFR 89.315 broadcast-module elements). */
+        in item position  : DronePosition;          // position, altitude; GPS time
+        in item velocity  : DroneVelocity;          // required broadcast element
+        in item home      : Waypoint;               // takeoff location, from RecordLaunchPoint
+        in attribute emergency : Boolean;           // failsafe active: from the state machine (failsafeReturn, emergencyLanding)
+        out item broadcast : RemoteIDBroadcast;     // context item: to public observers
+    }
+
+    action def RecordLaunchPoint {
+        doc /* When the motors are enabled, store where the drone is as the home point for returns, the geofence and Remote ID (END-1, XC-5). */
+        in item position : DronePosition;
+        in attribute motorsEnabled : Boolean;       // from ControlArming: record on arming
+        out item home    : Waypoint;
     }
 }

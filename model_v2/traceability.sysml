@@ -43,6 +43,7 @@ package TandemTraceability {
     dependency from noFollowWithoutApproval     to AcquireTarget::noResponse;
     // ACQ-2 fullCircleSearch
     dependency from fullCircleSearch            to AcquireTarget::scanForPersons;
+    dependency from fullCircleSearch            to AcquireTarget::aimCamera;
     // ACQ-3 detectedPersonDisplay
     dependency from detectedPersonDisplay       to AcquireTarget::showPersons;
     // ACQ-4 proposeOnePerson
@@ -61,9 +62,9 @@ package TandemTraceability {
     // ACQ-10 removeDepartedPerson
     dependency from removeDepartedPerson        to AcquireTarget::personLeaves;
     // ACQ-11 refuseOutOfViewApproval
-    dependency from refuseOutOfViewApproval     to AcquireTarget::approvedPersonLeaves;
+    dependency from refuseOutOfViewApproval     to AcquireTarget::checkApproval;
     // ACQ-12 explainRefusedApproval
-    dependency from explainRefusedApproval      to AcquireTarget::approvedPersonLeaves;
+    dependency from explainRefusedApproval      to AcquireTarget::explainRefusal;
     // ACQ-13 holdPositionWhileAcquiring
     dependency from holdPositionWhileAcquiring  to AcquireTarget::holdPosition;
 

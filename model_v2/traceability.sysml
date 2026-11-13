@@ -19,7 +19,6 @@ package TandemTraceability {
     // PRE-2 noArmOnFailedPrechecks
     dependency from noArmOnFailedPrechecks      to PrepareForFlight::prechecksFail;
     dependency from noArmOnFailedPrechecks      to PrepareForFlight::arm;
-    dependency from noArmOnFailedPrechecks      to TandemStates::TandemModes::armed;
     // PRE-3 showPrecheckFailures
     dependency from showPrecheckFailures        to PrepareForFlight::prechecksFail;
     dependency from showPrecheckFailures        to PrepareForFlight::notReady;
@@ -27,19 +26,16 @@ package TandemTraceability {
     dependency from confirmSettingsBeforeArming to PrepareForFlight::showSettings;
     dependency from confirmSettingsBeforeArming to PrepareForFlight::confirmSettings;
     dependency from confirmSettingsBeforeArming to PrepareForFlight::arm;
-    dependency from confirmSettingsBeforeArming to TandemStates::TandemModes::armed;
 
     // ---- Launch ----
     // LCH-1 takeOffWhenArmed
     dependency from takeOffWhenArmed            to LaunchDrone::triggerLaunch;
     dependency from takeOffWhenArmed            to LaunchDrone::climb;
-    dependency from takeOffWhenArmed            to TandemStates::TandemModes::autonomous::launching;
     // LCH-2 reachLaunchAltitude
     dependency from reachLaunchAltitude         to LaunchDrone::climb;
     dependency from reachLaunchAltitude         to LaunchDrone::hoverAtAltitude;
     // LCH-3 alertAltitudeNotReached
     dependency from alertAltitudeNotReached     to LaunchDrone::altitudeNotReached;
-    dependency from alertAltitudeNotReached     to TandemStates::TandemModes::autonomous::launchStalled;
 
     // ---- Acquire ----
     // ACQ-1 noFollowWithoutApproval
@@ -101,7 +97,6 @@ package TandemTraceability {
     dependency from returnToAcquisitionWhenLost to PauseFollowing::endPauseOnTargetLost;
     dependency from returnToAcquisitionWhenLost to AdjustFraming::stopMoveOnTargetLost;
     dependency from returnToAcquisitionWhenLost to KeepPersonInView::returnToAcquisition;
-    dependency from returnToAcquisitionWhenLost to TandemStates::TandemModes::autonomous::acquiring;
     // FLW-10 alertOperatorWhenLost
     dependency from alertOperatorWhenLost       to FilmTarget::reportTargetLost;
     // FLW-11 alertFallingBehind
@@ -111,7 +106,6 @@ package TandemTraceability {
     dependency from reacquireOnOverlap          to PauseFollowing::endPauseOnOverlap;
     dependency from reacquireOnOverlap          to KeepPersonInView::returnToAcquisition;
     dependency from reacquireOnOverlap          to AdjustFraming::stopMoveOnOverlap;
-    dependency from reacquireOnOverlap          to TandemStates::TandemModes::autonomous::acquiring;
     // FLW-13 rejectOutOfRangeSettings
     dependency from rejectOutOfRangeSettings    to AdjustFraming::rejectOutOfRange;
     dependency from rejectOutOfRangeSettings    to PrepareForFlight::invalidSetting;
@@ -126,31 +120,25 @@ package TandemTraceability {
     // FLW-19 holdOnPause
     dependency from holdOnPause                 to PauseFollowing::selectPause;
     dependency from holdOnPause                 to PauseFollowing::holdPosition;
-    dependency from holdOnPause                 to TandemStates::TandemModes::autonomous::paused;
     // FLW-20 resumeSameTarget
     dependency from resumeSameTarget            to PauseFollowing::selectResume;
     dependency from resumeSameTarget            to PauseFollowing::returnToZone;
-    dependency from resumeSameTarget            to TandemStates::TandemModes::autonomous::following;
 
     // ---- End ----
     // END-1 returnToLaunchPoint
     dependency from returnToLaunchPoint         to EndFlight::selectEndFlight;
     dependency from returnToLaunchPoint         to EndFlight::returnToLaunch;
-    dependency from returnToLaunchPoint         to TandemStates::TandemModes::autonomous::commandedEnding::returning;
     // END-2 landInPlace
     dependency from landInPlace                 to EndFlight::selectEndFlight;
     dependency from landInPlace                 to EndFlight::stopInPlace;
-    dependency from landInPlace                 to TandemStates::TandemModes::autonomous::commandedEnding::landing;
     // END-3 releaseTargetOnEnd
     dependency from releaseTargetOnEnd          to EndFlight::releaseTarget;
     // END-4 disarmAfterLanding
     dependency from disarmAfterLanding          to EndFlight::disarm;
-    dependency from disarmAfterLanding          to TandemStates::TandemModes::onGround;
     // END-5 showLandingSpot
     dependency from showLandingSpot             to EndFlight::showLandingSpot;
     // END-6 holdIfPersonBelow
     dependency from holdIfPersonBelow           to EndFlight::stopDescent;
-    dependency from holdIfPersonBelow           to TandemStates::TandemModes::autonomous::commandedEnding::holdingForPerson;
     // END-7 alertPersonBelow
     dependency from alertPersonBelow            to EndFlight::alertPersonBelow;
 
@@ -165,14 +153,12 @@ package TandemTraceability {
     dependency from manualOverrideStopsAutonomy to FilmTarget::handOverToPilot;
     dependency from manualOverrideStopsAutonomy to AdjustFraming::handOverToPilot;
     dependency from manualOverrideStopsAutonomy to EndFlight::handOverToPilot;
-    dependency from manualOverrideStopsAutonomy to TandemStates::TandemModes::manual;
     // MAN-2 holdUntilStickInput
     dependency from holdUntilStickInput         to TakeManualControl::holdPosition;
     // MAN-3 manualControlOnly
     dependency from manualControlOnly           to TakeManualControl::followStickInput;
     // MAN-4 reacquireAfterHandBack
     dependency from reacquireAfterHandBack      to TakeManualControl::resumeAcquisition;
-    dependency from reacquireAfterHandBack      to TandemStates::TandemModes::autonomous::acquiring;
 
     // ---- CrossCutting ----
     // XC-1 confirmOperatorCommands
@@ -199,24 +185,18 @@ package TandemTraceability {
     dependency from alertAtGeofence             to KeepPersonInView::stopAtGeofence;
     // XC-7 lowBatteryReturn
     dependency from lowBatteryReturn            to KeepPersonInView::returnOnLowBattery;
-    dependency from lowBatteryReturn            to TandemStates::TandemModes::failsafeReturn;
     // XC-8 criticalBatteryLand
     dependency from criticalBatteryLand         to KeepPersonInView::landOnCriticalBattery;
-    dependency from criticalBatteryLand         to TandemStates::TandemModes::emergencyLanding;
     // XC-9 groundLinkLossHold
     dependency from groundLinkLossHold          to KeepPersonInView::holdOnGroundLinkLoss;
-    dependency from groundLinkLossHold          to TandemStates::TandemModes::linkLossHold;
     // XC-10 groundLinkLossReturn
     dependency from groundLinkLossReturn        to KeepPersonInView::holdOnGroundLinkLoss;
-    dependency from groundLinkLossReturn        to TandemStates::TandemModes::failsafeReturn;
     // XC-11 rcLinkLossReturn
     dependency from rcLinkLossReturn            to KeepPersonInView::returnOnRcLoss;
     dependency from rcLinkLossReturn            to TakeManualControl::returnOnRcLoss;
-    dependency from rcLinkLossReturn            to TandemStates::TandemModes::failsafeReturn;
     // XC-12 gpsLossLand
     dependency from gpsLossLand                 to KeepPersonInView::landOnGpsLoss;
     dependency from gpsLossLand                 to EndFlight::abandonReturn;
-    dependency from gpsLossLand                 to TandemStates::TandemModes::emergencyLanding;
     // XC-13 gpsLossAdviseTakeover
     dependency from gpsLossAdviseTakeover       to KeepPersonInView::landOnGpsLoss;
     dependency from gpsLossAdviseTakeover       to EndFlight::abandonReturn;
@@ -228,7 +208,6 @@ package TandemTraceability {
     dependency from alertOnFailsafe             to KeepPersonInView::landOnGpsLoss;
     // XC-15 holdAfterLinkRestored
     dependency from holdAfterLinkRestored       to KeepPersonInView::holdOnGroundLinkLoss;
-    dependency from holdAfterLinkRestored       to TandemStates::TandemModes::linkLossHold;
 
     // ---- Constraints ----
     // CON-1 limitDescentRate

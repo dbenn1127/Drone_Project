@@ -4,7 +4,8 @@ trace_matrix.py - Generate the Tandem requirements traceability matrix (RTM).
 Reads the SysML v2 model files and writes a Markdown report:
   1. Requirements -> scenarios (ID, name, shall text, verify method, traces)
   2. Scenarios -> requirements (per use case, every action and what covers it)
-  3. Gaps (unlinked requirements, uncovered actions, broken references)
+  3. Gaps (unlinked requirements, uncovered actions, broken references,
+     Tandem steps with no function)
 
 The model stays the single source of truth; this is just a renderer.
 
@@ -25,7 +26,12 @@ REQUIREMENT = re.compile(
 DOC = re.compile(r"doc\s*/\*(.*?)\*/", re.S)
 VERIFY = re.compile(r"comment\s+Verify\s*/\*(.*?)\*/", re.S)
 USE_CASE = re.compile(r"use case def\s+(\w+)\s*\{")
-ACTION = re.compile(r"action\s+(\w+)\s*\{\s*doc\s*/\*(.*?)\*/", re.S)
+# a use case step, typed or not:  action name { doc ... }  or  action name : Function { doc ... }
+ACTION = re.compile(r"action\s+(\w+)\s*(?::\s*([\w:]+)\s*)?\{\s*doc\s*/\*(.*?)\*/", re.S)
+LANE_USE_CASE = re.compile(r"use case\s+(\w+)\s*:\s*(\w+)\s*;")      # use case prepare : PrepareForFlight;
+TANDEM_LANE = re.compile(r"part\s+\w+\s*:\s*TandemSystem\s*\{(.*?)\}", re.S)
+PERFORM = re.compile(r"perform\s+(\w+)\.(\w+)\s*;")
+STATE = re.compile(r"\bstate\s+(\w+)\s*[;{]")                       # state following { ... } or state onGround;
 DEPENDENCY = re.compile(r"dependency\s+from\s+(\w+)\s+to\s+([\w:]+)\s*;")
 
 
@@ -70,14 +76,30 @@ def parse_requirements(text):
 def parse_use_cases(text):
     use_cases = [(m.start(), m.group(1)) for m in USE_CASE.finditer(text)]
     actions = defaultdict(list)          # use case -> [(action, doc)]
+    types = {}                           # "UseCase::action" -> function name, or None if untyped
     for m in ACTION.finditer(text):
         uc = owner_at(m.start(), use_cases)
-        actions[uc].append((m.group(1), clean(m.group(2))))
-    return [name for _, name in use_cases], actions
+        name, func, doc = m.groups()
+        actions[uc].append((name, clean(doc)))
+        types[f"{uc}::{name}"] = func
+    return [name for _, name in use_cases], actions, types
 
 
-def build_report(reqs, uc_order, actions, deps):
+def parse_tandem_steps(text):
+    """Steps listed in a Tandem lane (part ... : TandemSystem { perform x.step; })."""
+    alias = dict(LANE_USE_CASE.findall(text))            # prepare -> PrepareForFlight
+    steps = []
+    for lane in TANDEM_LANE.finditer(text):
+        for a, step in PERFORM.findall(lane.group(1)):
+            steps.append(f"{alias.get(a, a)}::{step}")
+    return steps
+
+
+def build_report(reqs, uc_order, actions, deps, types, tandem_steps, states=()):
     known_targets = set(uc_order)
+    # traces to states (e.g. TandemStates::TandemModes::autonomous::following) count when the state exists
+    known_targets.update(dst for _, dst in deps
+                         if dst.startswith("TandemStates::") and dst.rsplit("::", 1)[-1] in states)
     for uc, acts in actions.items():
         known_targets.update(f"{uc}::{a}" for a, _ in acts)
 
@@ -119,10 +141,11 @@ def build_report(reqs, uc_order, actions, deps):
         if r["package"] != current_pkg:
             current_pkg = r["package"]
             out += ["", f"### {current_pkg}", "",
-                    "| ID | Name | Requirement | Verify | Traces to |",
-                    "|---|---|---|---|---|"]
+                    "| ID | Name | Requirement | Verify | # | Traces to |",
+                    "|---|---|---|---|---|---|"]
         targets = "<br>".join(f"`{t}`" for t in req_links[r["name"]]) or "**none**"
-        out.append(f"| {r['id']} | `{r['name']}` | {r['doc']} | {r['verify']} | {targets} |")
+        out.append(f"| {r['id']} | `{r['name']}` | {r['doc']} | {r['verify']} | "
+                   f"{len(req_links[r['name']])} | {targets} |")
 
     # 2. Scenarios -> requirements
     out += ["", "## 2. Scenarios to requirements", ""]
@@ -131,10 +154,10 @@ def build_report(reqs, uc_order, actions, deps):
         whole = target_links.get(uc)
         if whole:
             out += [f"Whole use case: {', '.join(sorted(set(whole), key=id_sort_key))}", ""]
-        out += ["| Action | Step | Covered by |", "|---|---|---|"]
+        out += ["| Action | Step | # | Covered by |", "|---|---|---|---|"]
         for a, doc in actions.get(uc, []):
             ids = sorted(set(target_links.get(f"{uc}::{a}", [])), key=id_sort_key)
-            out.append(f"| `{a}` | {doc} | {', '.join(ids) or '-'} |")
+            out.append(f"| `{a}` | {doc} | {len(ids)} | {', '.join(ids) or '-'} |")
         out.append("")
 
     # 3. Gaps
@@ -147,28 +170,39 @@ def build_report(reqs, uc_order, actions, deps):
     out += gaps or ["None."]
     out += ["", "### Broken references", ""]
     out += [f"- {b}" for b in broken] or ["None."]
+    out += ["", "### Tandem steps with no function", "",
+            "Steps in a Tandem lane that are not typed by a function. Expected only for mode changes "
+            "(realized by state transitions) and steps that need no function; anything else is a gap.", ""]
+    untyped = [t for t in tandem_steps if types.get(t) is None]
+    out += [f"- `{t}`" + ("" if t in types else " (no such step in the use case)") for t in untyped] or ["None."]
     return "\n".join(out) + "\n"
 
 
-def build_html(reqs, uc_order, actions, deps):
+def build_html(reqs, uc_order, actions, deps, states=()):
     """A real grid: requirements down the side, scenario actions across the top."""
     from html import escape
 
     links = set(deps)
     # Columns: whole use case first (for mission-wide links), then its actions.
-    cols = []                                         # (use case, action or None, tooltip)
+    # Then one "States" group for traces to states (e.g. FLW-6 -> autonomous::following).
+    cols = []                                         # (group, label, tooltip, target)
     for uc in uc_order:
         if any(dst == uc for _, dst in deps):
-            cols.append((uc, None, f"{uc} (whole use case)"))
+            cols.append((uc, "(whole)", f"{uc} (whole use case)", uc))
         for a, doc in actions.get(uc, []):
-            cols.append((uc, a, doc))
+            cols.append((uc, a, doc, f"{uc}::{a}"))
+    state_targets = sorted({dst for _, dst in deps
+                            if dst.startswith("TandemStates::") and dst.rsplit("::", 1)[-1] in states})
+    for dst in state_targets:
+        label = "::".join(dst.split("::")[2:])        # drop TandemStates::TandemModes
+        cols.append(("States", label, dst, dst))
 
     def target(col):
-        uc, a, _ = col
-        return uc if a is None else f"{uc}::{a}"
+        return col[3]
 
     ordered = sorted(reqs.values(), key=lambda r: id_sort_key(r["id"]))
-    col_hit = {target(c): any((r["name"], target(c)) in links for r in ordered) for c in cols}
+    col_count = {target(c): sum((r["name"], target(c)) in links for r in ordered) for c in cols}
+    col_hit = {t: n > 0 for t, n in col_count.items()}
 
     # Header row 1: use case names spanning their columns.
     spans, row1 = [], ['<th class="corner" rowspan="2">Requirement</th>']
@@ -190,10 +224,9 @@ def build_html(reqs, uc_order, actions, deps):
     row2 = []
     for c in cols:
         t = target(c)
-        name = "(whole)" if c[1] is None else c[1]
         gap = "" if col_hit[t] else " gap"
         row2.append(f'<th class="act g{group_of[t]}{gap}" title="{escape(c[2])}">'
-                    f'<span>{escape(name)}</span></th>')
+                    f'<span>{escape(c[1])}</span><b class="n">{col_count[t]}</b></th>')
 
     body, current_pkg = [], None
     for r in ordered:
@@ -205,7 +238,8 @@ def build_html(reqs, uc_order, actions, deps):
         cells = "".join(f'<td class="g{group_of[target(c)]}">{"●" if h else ""}</td>'
                         for c, h in zip(cols, hits))
         body.append(f'<tr><th class="req{gap}" title="{escape(r["doc"])} [Verify: {escape(r["verify"])}]">'
-                    f'{escape(r["id"])} <small>{escape(r["name"])}</small></th>{cells}</tr>')
+                    f'<b class="n">{sum(hits)}</b>{escape(r["id"])} <small>{escape(r["name"])}</small>'
+                    f'</th>{cells}</tr>')
 
     n_gap_cols = sum(1 for v in col_hit.values() if not v)
     return f"""<!doctype html>
@@ -233,6 +267,9 @@ def build_html(reqs, uc_order, actions, deps):
   th.act {{ height:150px; width:22px; min-width:22px; vertical-align:bottom; padding:4px 0;
            font-weight:400; }}
   th.act span {{ writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }}
+  th.act b.n {{ display:block; margin-top:4px; font-size:11px; font-weight:700; }}
+  tbody th.req b.n {{ display:inline-block; width:20px; margin-right:8px; text-align:right;
+                     font-size:11px; font-weight:700; opacity:.8; }}
   th.act.gap {{ background:var(--gap); color:var(--gapfg); }}
   tbody th.req {{ position:sticky; left:0; z-index:1; background:var(--bg); text-align:left;
                  padding:3px 8px; white-space:nowrap; font-weight:600; }}
@@ -247,6 +284,7 @@ def build_html(reqs, uc_order, actions, deps):
 <h1>Tandem trace matrix</h1>
 <p class="meta">Generated {date.today().isoformat()} from model_v2 · {len(reqs)} requirements ·
 {len(cols)} columns · {len(deps)} links · red = no link ({n_gap_cols} uncovered columns).
+Numbers = trace count per requirement (left of the ID) and per column (under the name).
 Hover a name for its text.</p>
 <div class="wrap"><table>
 <thead><tr>{''.join(row1)}</tr><tr>{''.join(row2)}</tr></thead>
@@ -265,11 +303,15 @@ def main():
 
     model = Path(args.model)
     reqs = parse_requirements((model / "requirements.sysml").read_text())
-    uc_order, actions = parse_use_cases((model / "use_cases.sysml").read_text())
+    uc_text = (model / "use_cases.sysml").read_text()
+    uc_order, actions, types = parse_use_cases(uc_text)
+    tandem_steps = parse_tandem_steps(uc_text)
     deps = DEPENDENCY.findall((model / "traceability.sysml").read_text())
+    states_file = model / "states.sysml"
+    states = set(STATE.findall(states_file.read_text())) if states_file.exists() else set()
 
-    for path, content in ((args.out, build_report(reqs, uc_order, actions, deps)),
-                          (args.html, build_html(reqs, uc_order, actions, deps))):
+    for path, content in ((args.out, build_report(reqs, uc_order, actions, deps, types, tandem_steps, states)),
+                          (args.html, build_html(reqs, uc_order, actions, deps, states))):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(content)
     print(f"Wrote {args.out} and {args.html}: {len(reqs)} requirements, {len(deps)} links")
